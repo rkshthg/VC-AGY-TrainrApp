@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TextInput, TextInputProps, StyleSheet, View, Text, Platform } from 'react-native';
+import { useThemeStore } from '@/store/themeStore';
 
 export interface NeumorphicInputProps extends TextInputProps {
   label?: string;
@@ -14,23 +15,29 @@ export const NeumorphicInput: React.FC<NeumorphicInputProps> = ({
   style,
   onFocus,
   onBlur,
+  placeholderTextColor,
   ...props
 }) => {
+  const { theme } = useThemeStore();
+  const isLight = theme === 'light';
   const [isFocused, setIsFocused] = useState(false);
+
+  const defaultPlaceholderColor = isLight ? '#94A3B8' : '#A3B8B0';
 
   return (
     <View style={styles.container} className={containerClassName}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && <Text style={[styles.label, isLight && styles.labelLight]}>{label}</Text>}
       <View
         style={[
           styles.inputWrapper,
-          isFocused && styles.focusedWrapper,
+          isLight ? styles.inputWrapperLight : styles.inputWrapperDark,
+          isFocused && (isLight ? styles.focusedWrapperLight : styles.focusedWrapperDark),
           error ? styles.errorWrapper : null,
         ]}
       >
         <TextInput
-          placeholderTextColor="#A3B8B0"
-          style={[styles.input, style]}
+          placeholderTextColor={placeholderTextColor || defaultPlaceholderColor}
+          style={[styles.input, isLight && styles.inputLight, style]}
           onFocus={(e) => {
             setIsFocused(true);
             onFocus?.(e);
@@ -59,37 +66,30 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  labelLight: {
+    color: '#476355',
+  },
   inputWrapper: {
-    backgroundColor: '#08140F',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#153127',
     paddingHorizontal: 16,
     paddingVertical: Platform.OS === 'ios' ? 14 : 10,
     minHeight: 50,
     justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 1, height: 2 },
-        shadowOpacity: 0.5,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-      web: {
-        boxShadow: 'inset 3px 3px 6px #040A07, inset -2px -2px 5px #1A3C2F',
-      },
-    }),
   },
-  focusedWrapper: {
+  inputWrapperDark: {
+    backgroundColor: '#08140F',
+    borderColor: '#153127',
+  },
+  inputWrapperLight: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
+  },
+  focusedWrapperDark: {
     borderColor: '#E5C158',
-    ...Platform.select({
-      web: {
-        boxShadow: 'inset 3px 3px 6px #040A07, inset -2px -2px 5px #1A3C2F, 0px 0px 6px rgba(229, 193, 88, 0.4)',
-      },
-    }),
+  },
+  focusedWrapperLight: {
+    borderColor: '#D4AF37',
   },
   errorWrapper: {
     borderColor: '#EF4444',
@@ -99,9 +99,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  inputLight: {
+    color: '#0F291E',
+  },
   errorText: {
     color: '#F87171',
     fontSize: 11,
     marginTop: 4,
   },
 });
+

@@ -1,5 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Text, TouchableOpacityProps, StyleSheet, Platform, View } from 'react-native';
+import { useThemeStore } from '@/store/themeStore';
 
 export interface NeumorphicButtonProps extends TouchableOpacityProps {
   title: string;
@@ -19,17 +20,34 @@ export const NeumorphicButton: React.FC<NeumorphicButtonProps> = ({
   disabled,
   ...props
 }) => {
+  const { theme } = useThemeStore();
+  const isLight = theme === 'light';
+
   const getVariantStyles = () => {
-    switch (variant) {
-      case 'green':
-        return { container: styles.btnGreen, text: styles.textGreen };
-      case 'outline':
-        return { container: styles.btnOutline, text: styles.textOutline };
-      case 'danger':
-        return { container: styles.btnDanger, text: styles.textDanger };
-      case 'gold':
-      default:
-        return { container: styles.btnGold, text: styles.textGold };
+    if (isLight) {
+      switch (variant) {
+        case 'green':
+          return { container: styles.btnGreenLight, text: styles.textGreenLight };
+        case 'outline':
+          return { container: styles.btnOutlineLight, text: styles.textOutlineLight };
+        case 'danger':
+          return { container: styles.btnDangerLight, text: styles.textDangerLight };
+        case 'gold':
+        default:
+          return { container: styles.btnGoldLight, text: styles.textGoldLight };
+      }
+    } else {
+      switch (variant) {
+        case 'green':
+          return { container: styles.btnGreenDark, text: styles.textGreenDark };
+        case 'outline':
+          return { container: styles.btnOutlineDark, text: styles.textOutlineDark };
+        case 'danger':
+          return { container: styles.btnDangerDark, text: styles.textDangerDark };
+        case 'gold':
+        default:
+          return { container: styles.btnGoldDark, text: styles.textGoldDark };
+      }
     }
   };
 
@@ -91,7 +109,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 26,
     minHeight: 56,
   },
-  btnGold: {
+
+  // Dark Theme Button Styles
+  btnGoldDark: {
     backgroundColor: '#E5C158',
     borderWidth: 1,
     borderColor: '#F5D77F',
@@ -106,55 +126,94 @@ const styles = StyleSheet.create({
         elevation: 4,
       },
       web: {
-        boxShadow: '0px 4px 14px rgba(229, 193, 88, 0.4), 3px 3px 8px #040A07',
+        boxShadow: '0px 4px 14px rgba(229, 193, 88, 0.4)',
       },
     }),
   },
-  textGold: {
+  textGoldDark: {
     color: '#0A1913',
     fontWeight: '700',
   },
-  btnGreen: {
+  btnGreenDark: {
     backgroundColor: '#18362B',
     borderWidth: 1,
     borderColor: '#D4AF3760',
+  },
+  textGreenDark: {
+    color: '#E5C158',
+    fontWeight: '600',
+  },
+  btnOutlineDark: {
+    backgroundColor: '#0E2119',
+    borderWidth: 1.5,
+    borderColor: '#E5C158',
+  },
+  textOutlineDark: {
+    color: '#E5C158',
+    fontWeight: '600',
+  },
+  btnDangerDark: {
+    backgroundColor: '#2A1215',
+    borderWidth: 1,
+    borderColor: '#EF444460',
+  },
+  textDangerDark: {
+    color: '#F87171',
+    fontWeight: '600',
+  },
+
+  // Light Theme Button Styles (Concept 3 Executive)
+  btnGoldLight: {
+    backgroundColor: '#0F291E',
+    borderWidth: 1,
+    borderColor: '#D4AF37',
     ...Platform.select({
       ios: {
-        shadowColor: '#040A07',
-        shadowOffset: { width: 3, height: 3 },
-        shadowOpacity: 0.7,
+        shadowColor: '#0F291E',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.2,
         shadowRadius: 6,
       },
       android: {
         elevation: 3,
       },
       web: {
-        boxShadow: '4px 4px 10px #040A07, -3px -3px 8px #224D3E',
+        boxShadow: '0px 4px 12px rgba(15, 41, 30, 0.2)',
       },
     }),
   },
-  textGreen: {
-    color: '#E5C158',
-    fontWeight: '600',
+  textGoldLight: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
-  btnOutline: {
-    backgroundColor: '#0E2119',
-    borderWidth: 1.5,
-    borderColor: '#E5C158',
-  },
-  textOutline: {
-    color: '#E5C158',
-    fontWeight: '600',
-  },
-  btnDanger: {
-    backgroundColor: '#2A1215',
+  btnGreenLight: {
+    backgroundColor: '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#EF444460',
+    borderColor: '#CBD5E1',
   },
-  textDanger: {
-    color: '#F87171',
+  textGreenLight: {
+    color: '#0F291E',
     fontWeight: '600',
   },
+  btnOutlineLight: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#0F291E',
+  },
+  textOutlineLight: {
+    color: '#0F291E',
+    fontWeight: '600',
+  },
+  btnDangerLight: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  textDangerLight: {
+    color: '#DC2626',
+    fontWeight: '600',
+  },
+
   textBase: {
     textAlign: 'center',
   },
@@ -174,3 +233,4 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 });
+

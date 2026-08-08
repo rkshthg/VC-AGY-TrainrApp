@@ -16,12 +16,24 @@ interface HamburgerDrawerProps {
 
 export function HamburgerDrawer({ visible, onClose }: HamburgerDrawerProps) {
   const { theme, toggleTheme } = useThemeStore();
-  const { role, setRole, signOut, user } = useAuthStore();
+  const { role, setRole, signOut, user, userName } = useAuthStore();
   const router = useRouter();
 
   const handleOpenCalendar = () => {
     onClose();
     router.push('/calendar');
+  };
+
+  const handleSwitchRole = async () => {
+    const newRole = role === 'trainer' ? 'client' : 'trainer';
+    await setRole(newRole);
+    onClose();
+    Alert.alert('Role Updated 🔄', `Switched to ${newRole === 'trainer' ? 'Trainer' : 'Client / User'} mode.`);
+    if (newRole === 'trainer') {
+      router.replace('/(trainer)');
+    } else {
+      router.replace('/(client)');
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -81,6 +93,9 @@ export function HamburgerDrawer({ visible, onClose }: HamburgerDrawerProps) {
     );
   };
 
+  const isLight = theme === 'light';
+  const iconColor = isLight ? '#C5A028' : '#E5C158';
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity
@@ -90,27 +105,38 @@ export function HamburgerDrawer({ visible, onClose }: HamburgerDrawerProps) {
       >
         <TouchableOpacity
           activeOpacity={1}
-          className="w-4/5 max-w-xs h-full bg-[#0A1913] border-l border-[#1C4033] p-6 justify-between"
+          className={`w-4/5 max-w-xs h-full border-l p-6 justify-between ${
+            isLight ? 'bg-[#F8FAF8] border-slate-200' : 'bg-[#0A1913] border-[#1C4033]'
+          }`}
         >
           <View>
             <View className="flex-row justify-between items-center mb-6 pt-6">
               <View>
-                <Text className="text-2xl font-black text-white tracking-wide">Trainr</Text>
-                <Text className="text-[10px] text-gold-light font-bold uppercase tracking-widest mt-0.5">
+                <Text className={`text-2xl font-black tracking-wide ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+                  Trainr
+                </Text>
+                <Text className={`text-xs font-bold uppercase tracking-widest mt-0.5 ${isLight ? 'text-[#C5A028]' : 'text-gold-light'}`}>
                   Menu & Settings
                 </Text>
               </View>
               <TouchableOpacity onPress={onClose} className="p-2">
-                <Text className="text-sage font-bold text-lg">✕</Text>
+                <Text className={`font-bold text-lg ${isLight ? 'text-[#476355]' : 'text-sage'}`}>✕</Text>
               </TouchableOpacity>
             </View>
 
             {/* Account Info */}
             <NeumorphicView variant="inset" className="p-4 mb-6">
-              <Text className="text-xs text-sage font-medium">Signed in as</Text>
-              <Text className="text-sm font-bold text-white mb-1" numberOfLines={1}>{user?.email || 'User'}</Text>
-              <View className="bg-gold-dark/40 px-2.5 py-0.5 rounded self-start border border-gold-bright/30">
-                <Text className="text-[10px] text-gold-light font-black uppercase">
+              <Text className={`text-xs font-medium ${isLight ? 'text-[#476355]' : 'text-sage'}`}>Signed in as</Text>
+              <Text className={`text-base font-bold mb-0.5 ${isLight ? 'text-[#0F291E]' : 'text-white'}`} numberOfLines={1}>
+                {userName || user?.email?.split('@')[0] || 'User'}
+              </Text>
+              <Text className={`text-xs mb-2 ${isLight ? 'text-slate-500' : 'text-sage-light'}`} numberOfLines={1}>
+                {user?.email}
+              </Text>
+              <View className={`px-2.5 py-0.5 rounded self-start border ${
+                isLight ? 'bg-amber-100 border-amber-300' : 'bg-gold-dark/40 border-gold-bright/30'
+              }`}>
+                <Text className={`text-xs font-black uppercase ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
                   Role: {role === 'trainer' ? 'Trainer' : 'User / Client'}
                 </Text>
               </View>
@@ -119,55 +145,69 @@ export function HamburgerDrawer({ visible, onClose }: HamburgerDrawerProps) {
             {/* Menu Items */}
             <View className="space-y-4">
               {/* Dark / Light Mode Switch */}
-              <View className="flex-row justify-between items-center py-3 border-b border-deepGreen-border">
+              <View className={`flex-row justify-between items-center py-3 border-b ${isLight ? 'border-slate-200' : 'border-deepGreen-border'}`}>
                 <View className="flex-row items-center space-x-3">
-                  <Ionicons name={theme === 'dark' ? 'moon-outline' : 'sunny-outline'} size={20} color="#E5C158" />
-                  <Text className="text-sm font-bold text-white">
+                  <Ionicons name={theme === 'dark' ? 'moon-outline' : 'sunny-outline'} size={20} color={iconColor} />
+                  <Text className={`text-base font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
                     {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
                   </Text>
                 </View>
                 <Switch
                   value={theme === 'dark'}
                   onValueChange={toggleTheme}
-                  trackColor={{ false: '#3B594C', true: '#E5C158' }}
+                  trackColor={{ false: '#CBD5E1', true: '#C5A028' }}
                   thumbColor={theme === 'dark' ? '#0A1913' : '#FFFFFF'}
                 />
               </View>
 
-              {/* Calendar Button */}
+              {/* Calendar Button (Renamed from History Calendar) */}
               <TouchableOpacity
                 onPress={handleOpenCalendar}
-                className="flex-row justify-between items-center py-3 border-b border-deepGreen-border"
+                className={`flex-row justify-between items-center py-3 border-b ${isLight ? 'border-slate-200' : 'border-deepGreen-border'}`}
               >
                 <View className="flex-row items-center space-x-3">
-                  <Ionicons name="calendar-outline" size={20} color="#E5C158" />
-                  <Text className="text-sm font-bold text-white">History Calendar</Text>
+                  <Ionicons name="calendar-outline" size={20} color={iconColor} />
+                  <Text className={`text-base font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>Calendar</Text>
                 </View>
-                <Text className="text-sage text-xs">→</Text>
+                <Text className={`text-sm ${isLight ? 'text-[#476355]' : 'text-sage'}`}>→</Text>
+              </TouchableOpacity>
+
+              {/* Account Options: Role Switch */}
+              <TouchableOpacity
+                onPress={handleSwitchRole}
+                className={`flex-row justify-between items-center py-3 border-b ${isLight ? 'border-slate-200' : 'border-deepGreen-border'}`}
+              >
+                <View className="flex-row items-center space-x-3">
+                  <Ionicons name="swap-horizontal-outline" size={20} color={iconColor} />
+                  <Text className={`text-base font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+                    Switch to {role === 'trainer' ? 'Client Mode' : 'Trainer Mode'}
+                  </Text>
+                </View>
+                <Text className={`text-xs font-bold ${isLight ? 'text-[#C5A028]' : 'text-gold-light'}`}>Change</Text>
               </TouchableOpacity>
 
               {/* Data Storage Cleanup */}
               <TouchableOpacity
                 onPress={handleRunCleanup}
-                className="flex-row justify-between items-center py-3 border-b border-deepGreen-border"
+                className={`flex-row justify-between items-center py-3 border-b ${isLight ? 'border-slate-200' : 'border-deepGreen-border'}`}
               >
                 <View className="flex-row items-center space-x-3">
-                  <Ionicons name="trash-outline" size={20} color="#E5C158" />
-                  <Text className="text-sm font-bold text-white">Clean 90+ Day Storage</Text>
+                  <Ionicons name="trash-outline" size={20} color={iconColor} />
+                  <Text className={`text-base font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>Clean 90+ Day Storage</Text>
                 </View>
-                <Text className="text-sage text-xs">Purge</Text>
+                <Text className={`text-xs ${isLight ? 'text-[#476355]' : 'text-sage'}`}>Purge</Text>
               </TouchableOpacity>
 
-              {/* Delete Account Button */}
+              {/* Account Options: Delete Account Button */}
               <TouchableOpacity
                 onPress={handleDeleteAccount}
-                className="flex-row justify-between items-center py-3 border-b border-deepGreen-border"
+                className={`flex-row justify-between items-center py-3 border-b ${isLight ? 'border-slate-200' : 'border-deepGreen-border'}`}
               >
                 <View className="flex-row items-center space-x-3">
                   <Ionicons name="alert-circle-outline" size={20} color="#EF4444" />
-                  <Text className="text-sm font-bold text-red-400">Delete Account</Text>
+                  <Text className="text-base font-bold text-red-500">Delete Account</Text>
                 </View>
-                <Text className="text-red-400 text-xs font-bold">Purge All</Text>
+                <Text className="text-red-500 text-xs font-bold">Purge All</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -189,3 +229,5 @@ export function HamburgerDrawer({ visible, onClose }: HamburgerDrawerProps) {
     </Modal>
   );
 }
+
+

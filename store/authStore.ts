@@ -15,12 +15,14 @@ type Role = UserRole | null;
 interface AuthState {
   session: Session | null;
   user: User | null;
+  userName: string | null;
   role: Role;
   onboardingCompleted: boolean;
   isLoading: boolean;
   setSession: (session: Session | null) => void;
   setRole: (role: Role) => Promise<void>;
   setOnboardingCompleted: (completed: boolean) => void;
+  setUserName: (name: string) => void;
   initialize: (session: Session | null, role: Role) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -28,11 +30,13 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   user: null,
+  userName: null,
   role: null,
   onboardingCompleted: false,
   isLoading: true,
 
   setSession: (session) => set({ session, user: session?.user || null }),
+  setUserName: (name: string) => set({ userName: name }),
 
   setRole: async (role) => {
     set({ role });
@@ -56,6 +60,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialize: async (session, fallbackRole) => {
     let activeRole: Role = fallbackRole;
     let completed = false;
+    let name: string | null = null;
 
     if (session?.user?.id) {
       const res = await getUserRole(session.user.id);
@@ -64,10 +69,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await AsyncStorage.setItem('trainr_role', res.role);
       }
       completed = res.onboardingCompleted;
+
+      // Fetch user-provided full_name from DB
+      const { data: dbUser } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (dbUser?.full_name) {
+        name = dbUser.full_name;
+      } else {
+        name = session.user.user_metadata?.full_name || null;
+      }
     }
+
     set({
       session,
       user: session?.user || null,
+      userName: name,
       role: activeRole,
       onboardingCompleted: completed,
       isLoading: false,
@@ -77,6 +97,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     await AsyncStorage.removeItem('trainr_role');
-    set({ session: null, user: null, role: null, onboardingCompleted: false });
+    set({ session: null, user: null, userName: null, role: null, onboardingCompleted: false });
   },
 }));
+

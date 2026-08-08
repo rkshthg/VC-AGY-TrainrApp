@@ -217,26 +217,37 @@ export async function fetchUserProfileData(userId: string): Promise<any | null> 
 }
 
 /**
- * Fetch all paired clients for a specific trainer
+ * Fetch all paired clients for a specific trainer along with live daily nutrition & workout metrics
  */
 export async function getTrainerClients(trainerId: string): Promise<any[]> {
   try {
-    const { data: rels, error } = await supabase
+    // 1. Get client IDs from trainer_client_relationships
+    const { data: rels } = await supabase
       .from('trainer_client_relationships')
       .select('client_id')
       .eq('trainer_id', trainerId)
       .eq('status', 'accepted');
 
-    if (error || !rels || rels.length === 0) {
-      return [];
-    }
+    // 2. Get client IDs from client_profiles directly
+    const { data: directProfiles } = await supabase
+      .from('client_profiles')
+      .select('user_id')
+      .eq('trainer_id', trainerId);
 
-    const clientIds = rels.map((r: any) => r.client_id);
+    const clientSet = new Set<string>();
+    (rels || []).forEach((r: any) => r.client_id && clientSet.add(r.client_id));
+    (directProfiles || []).forEach((p: any) => p.user_id && clientSet.add(p.user_id));
+
+    const clientIds = Array.from(clientSet);
+    if (clientIds.length === 0) return [];
+
+    // 3. Fetch user info
     const { data: usersData } = await supabase
       .from('users')
       .select('id, full_name, email, avatar_url')
       .in('id', clientIds);
 
+    // 4. Fetch client profiles
     const { data: clientProfiles } = await supabase
       .from('client_profiles')
       .select('user_id, fitness_goal, calorie_target, protein_target')
@@ -244,16 +255,53 @@ export async function getTrainerClients(trainerId: string): Promise<any[]> {
 
     const profileMap = new Map((clientProfiles || []).map((p: any) => [p.user_id, p]));
 
+    // 5. Fetch today's meal entries for live logged calories & protein
+    const todayStr = new Date().toISOString().split('T')[0];
+    const { data: todayMeals } = await supabase
+      .from('meal_entries')
+      .select('user_id, calories, protein_g')
+      .in('user_id', clientIds)
+      .eq('date', todayStr);
+
+    const nutritionMap = new Map<string, { calories: number; protein: number }>();
+    (todayMeals || []).forEach((m: any) => {
+      const existing = nutritionMap.get(m.user_id) || { calories: 0, protein: 0 };
+      existing.calories += Number(m.calories || 0);
+      existing.protein += Number(m.protein_g || 0);
+      nutritionMap.set(m.user_id, existing);
+    });
+
+    // 6. Fetch recent workout sessions for activity tracking
+    const { data: recentSessions } = await supabase
+      .from('workout_sessions')
+      .select('user_id, title, date, created_at')
+      .in('user_id', clientIds)
+      .order('created_at', { ascending: false });
+
+    const workoutMap = new Map<string, { title: string; date: string }>();
+    (recentSessions || []).forEach((s: any) => {
+      if (!workoutMap.has(s.user_id)) {
+        workoutMap.set(s.user_id, { title: s.title, date: s.date });
+      }
+    });
+
     return (usersData || []).map((u: any) => {
       const p = profileMap.get(u.id);
+      const nut = nutritionMap.get(u.id) || { calories: 0, protein: 0 };
+      const w = workoutMap.get(u.id);
+
       return {
         id: u.id,
-        full_name: u.full_name,
+        full_name: u.full_name || u.email?.split('@')[0] || 'Client',
         email: u.email,
         avatar_url: u.avatar_url,
         fitness_goal: p?.fitness_goal || 'Recomposition',
+        calories_logged: nut.calories,
         calorie_target: p?.calorie_target || 2200,
+        protein_logged: nut.protein,
         protein_target: p?.protein_target || 160,
+        last_workout: w ? `${w.title} (${w.date})` : 'No workout logged yet',
+        last_active: w ? w.date : 'Recently',
       };
     });
   } catch (err) {
@@ -261,6 +309,7 @@ export async function getTrainerClients(trainerId: string): Promise<any[]> {
     return [];
   }
 }
+
 
 /**
  * Link client to a trainer using a unique Trainer Code

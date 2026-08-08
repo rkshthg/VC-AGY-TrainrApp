@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { HamburgerDrawer } from '@/components/HamburgerDrawer';
+import { useThemeStore } from '@/store/themeStore';
 
 interface AppHeaderProps {
   title?: string;
@@ -9,6 +10,8 @@ interface AppHeaderProps {
 
 export function AppHeader({ title = 'Trainr', subtitle }: AppHeaderProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { theme } = useThemeStore();
+  const isLight = theme === 'light';
 
   return (
     <>
@@ -20,9 +23,13 @@ export function AppHeader({ title = 'Trainr', subtitle }: AppHeaderProps) {
             resizeMode="cover"
           />
           <View>
-            <Text className="text-2xl font-black text-white tracking-wide">{title}</Text>
+            <Text className={`text-2xl font-black tracking-wide ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+              {title}
+            </Text>
             {subtitle ? (
-              <Text className="text-xs text-sage font-medium tracking-wide">{subtitle}</Text>
+              <Text className={`text-xs font-medium tracking-wide ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+                {subtitle}
+              </Text>
             ) : null}
           </View>
         </View>
@@ -30,10 +37,12 @@ export function AppHeader({ title = 'Trainr', subtitle }: AppHeaderProps) {
         {/* Hamburger Menu Button */}
         <TouchableOpacity
           onPress={() => setDrawerOpen(true)}
-          className="p-2.5 bg-deepGreen-elevated rounded-xl border border-deepGreen-border items-center justify-center"
+          className={`p-2.5 rounded-xl items-center justify-center border ${
+            isLight ? 'bg-slate-100 border-slate-300' : 'bg-deepGreen-elevated border-deepGreen-border'
+          }`}
           activeOpacity={0.7}
         >
-          <Text className="text-xl leading-none text-gold-light">☰</Text>
+          <Text className={`text-xl leading-none ${isLight ? 'text-[#0F291E]' : 'text-gold-light'}`}>☰</Text>
         </TouchableOpacity>
       </View>
 
@@ -41,3 +50,4 @@ export function AppHeader({ title = 'Trainr', subtitle }: AppHeaderProps) {
     </>
   );
 }
+

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, ViewProps, StyleSheet, Platform } from 'react-native';
+import { useThemeStore } from '@/store/themeStore';
 
 export interface NeumorphicViewProps extends ViewProps {
   variant?: 'extruded' | 'inset' | 'flat' | 'goldAccent';
@@ -16,17 +17,34 @@ export const NeumorphicView: React.FC<NeumorphicViewProps> = ({
   children,
   ...props
 }) => {
+  const { theme } = useThemeStore();
+  const isLight = theme === 'light';
+
   const getVariantStyles = () => {
-    switch (variant) {
-      case 'inset':
-        return styles.inset;
-      case 'goldAccent':
-        return styles.goldAccent;
-      case 'flat':
-        return styles.flat;
-      case 'extruded':
-      default:
-        return styles.extruded;
+    if (isLight) {
+      switch (variant) {
+        case 'inset':
+          return styles.insetLight;
+        case 'goldAccent':
+          return styles.goldAccentLight;
+        case 'flat':
+          return styles.flatLight;
+        case 'extruded':
+        default:
+          return styles.extrudedLight;
+      }
+    } else {
+      switch (variant) {
+        case 'inset':
+          return styles.insetDark;
+        case 'goldAccent':
+          return styles.goldAccentDark;
+        case 'flat':
+          return styles.flatDark;
+        case 'extruded':
+        default:
+          return styles.extrudedDark;
+      }
     }
   };
 
@@ -35,7 +53,7 @@ export const NeumorphicView: React.FC<NeumorphicViewProps> = ({
       style={[
         styles.base,
         getVariantStyles(),
-        glow && styles.glowBorder,
+        glow && (isLight ? styles.glowBorderLight : styles.glowBorderDark),
         style,
       ]}
       className={className}
@@ -51,7 +69,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
   },
-  extruded: {
+  // Dark Theme Styles
+  extrudedDark: {
     backgroundColor: '#122920',
     borderWidth: 1,
     borderColor: '#1D4537',
@@ -70,7 +89,7 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  inset: {
+  insetDark: {
     backgroundColor: '#08140F',
     borderWidth: 1,
     borderColor: '#0D201A',
@@ -89,7 +108,7 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  goldAccent: {
+  goldAccentDark: {
     backgroundColor: '#152C22',
     borderWidth: 1.5,
     borderColor: '#D4AF3770',
@@ -108,12 +127,66 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  flat: {
+  flatDark: {
     backgroundColor: '#10241C',
     borderWidth: 1,
     borderColor: '#16362B',
   },
-  glowBorder: {
+  glowBorderDark: {
     borderColor: '#E5C158',
   },
+
+  // Light Theme Styles (Concept 3 Executive Clean Light)
+  extrudedLight: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#64748B',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: '0px 4px 16px rgba(100, 116, 139, 0.08)',
+      },
+    }),
+  },
+  insetLight: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  goldAccentLight: {
+    backgroundColor: '#FCF9EE',
+    borderWidth: 1.5,
+    borderColor: '#D4AF37',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#D4AF37',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: '0px 4px 14px rgba(212, 175, 55, 0.15)',
+      },
+    }),
+  },
+  flatLight: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  glowBorderLight: {
+    borderColor: '#C5A028',
+  },
 });
+
