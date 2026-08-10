@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNutritionStore } from '@/store/nutritionStore';
-import { useAuthStore } from '@/store/authStore';
-import { useThemeStore } from '@/store/themeStore';
-import { MacroRing } from '@/components/MacroRing';
-import { MealLogModal } from '@/components/MealLogModal';
-import { AppHeader } from '@/components/AppHeader';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { MealEntry } from '@/types/nutrition';
+import { useNutritionStore } from '@/features/nutrition/presentation/nutritionStore';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { useThemeStore } from '@/core/presentation/theme/themeStore';
+import { MacroRing } from '@/features/nutrition/presentation/MacroRing';
+import { MealLogModal } from '@/features/nutrition/presentation/MealLogModal';
+import { AppHeader } from '@/core/presentation/components/AppHeader';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { MealEntry } from '@/features/nutrition/domain/nutrition';
 
 export default function NutritionTab() {
   const insets = useSafeAreaInsets();
@@ -55,7 +55,7 @@ export default function NutritionTab() {
       <AppHeader title="Nutrition Tracker" subtitle="Daily Targets & Meal History" />
 
       {/* Top Banner: Daily Nutrition Goals & Today's Progress */}
-      <NeumorphicView variant="goldAccent" className="p-5 mb-6">
+      <NeumorphicView variant="goldAccent" className="p-5 mb-6 rounded-2xl">
         <View className="flex-row justify-between items-center mb-4">
           <View>
             <Text className={`text-base font-bold tracking-wide ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
@@ -72,7 +72,7 @@ export default function NutritionTab() {
         </View>
 
         <View className="flex-row -mx-1 mb-1">
-          <MacroRing label="Calories" current={totalCalories} target={target.calories} unit="kcal" colorBar="bg-[#D4AF37]" />
+          <MacroRing label="Calories" current={totalCalories} target={target.calories} unit="kcal" colorBar="bg-gold" />
           <MacroRing label="Protein" current={totalProtein} target={target.protein_g} unit="g" colorBar="bg-emerald-500" />
         </View>
         <View className="flex-row -mx-1">
@@ -91,7 +91,7 @@ export default function NutritionTab() {
       />
 
       {/* History of All Meals Grouped by Date */}
-      <NeumorphicView variant="extruded" className="p-5 mb-6">
+      <NeumorphicView variant="extruded" className="p-5 mb-6 rounded-2xl">
         <Text className={`text-base font-bold mb-4 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>Meal Log History</Text>
 
         {sortedDates.length === 0 ? (
@@ -105,10 +105,10 @@ export default function NutritionTab() {
             return (
               <View key={dateStr} className={`mb-5 pb-3 border-b ${isLight ? 'border-slate-200' : 'border-deepGreen-border'}`}>
                 <View className="flex-row justify-between items-center mb-2">
-                  <Text className={`text-xs font-black uppercase tracking-wider ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+                  <Text className={`text-xs font-black uppercase tracking-widest ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
                     {isToday ? 'Today' : dateStr}
                   </Text>
-                  <Text className={`text-xs font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>{dayCalories} kcal logged</Text>
+                  <Text className={`text-xs font-mono font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>{dayCalories} kcal logged</Text>
                 </View>
 
                 {dayLogs.map((m) => (
@@ -116,17 +116,17 @@ export default function NutritionTab() {
                     <View style={{ flex: 1 }}>
                       <View className="flex-row items-center space-x-2">
                         <Text className={`font-semibold text-sm ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>{m.meal_name}</Text>
-                        <View className={`px-1.5 py-0.5 rounded ${isLight ? 'bg-amber-100' : 'bg-gold-dark/30'}`}>
-                          <Text className={`text-[9px] font-bold uppercase ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+                        <View className={`px-2 py-0.5 rounded-full ${isLight ? 'bg-amber-100' : 'bg-gold-dark/30'}`}>
+                          <Text className={`text-[9px] font-bold uppercase tracking-wider ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
                             {m.meal_type}
                           </Text>
                         </View>
                       </View>
-                      <Text className={`text-xs ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+                      <Text className={`text-xs font-mono ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
                         {m.calories} kcal • {m.protein_g}g P • {m.carbs_g}g C • {m.fat_g}g F
                       </Text>
                     </View>
-                    <Text className={`text-xs ${isLight ? 'text-[#476355]' : 'text-sage'}`}>{m.logged_time || 'Logged'}</Text>
+                    <Text className={`text-xs font-mono ${isLight ? 'text-[#476355]' : 'text-sage'}`}>{m.logged_time || 'Logged'}</Text>
                   </View>
                 ))}
               </View>

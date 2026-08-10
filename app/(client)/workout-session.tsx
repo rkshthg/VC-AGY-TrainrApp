@@ -12,7 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useWorkoutStore, LoggedSet } from '@/store/workoutStore';
+import { useWorkoutStore } from '@/features/workout/presentation/workoutStore';
+import { LoggedSet } from '@/features/workout/domain/workout';
 
 interface WorkoutSetRowProps {
   set: LoggedSet;

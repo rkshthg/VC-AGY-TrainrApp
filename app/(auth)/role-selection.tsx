@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuthStore } from '@/store/authStore';
-import { fetchUserProfileData, acceptClientInvite } from '@/services/authService';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { NeumorphicInput } from '@/components/NeumorphicInput';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { fetchUserProfileData, acceptClientInvite } from '@/features/auth/data/authService';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { NeumorphicInput } from '@/core/presentation/components/NeumorphicInput';
 
 import { useRouter } from 'expo-router';
 
@@ -59,38 +59,53 @@ export default function RoleSelection() {
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
     >
       <View className="w-full max-w-sm">
-        <Text className="text-3xl font-black text-white text-center mb-2">Welcome to Trainr</Text>
-        <Text className="text-xs text-sage text-center mb-8">
-          Choose your account type to customize your workspace dashboard.
-        </Text>
-        
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={handleSelectTrainer}
-          className="mb-4"
-          disabled={isSubmitting}
-        >
-          <NeumorphicView variant="goldAccent" className="p-6">
-            <Text className="text-gold-light font-bold text-xl mb-1.5">I'm a Trainer</Text>
-            <Text className="text-xs text-sage leading-5">
-              Build custom client workout routines, monitor macro targets, & manage your roster.
-            </Text>
-          </NeumorphicView>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={handleSelectClientPrompt}
-          className="mb-6"
-          disabled={isSubmitting}
-        >
-          <NeumorphicView variant="extruded" className="p-6">
-            <Text className="text-white font-bold text-xl mb-1.5">I'm a Client / Athlete</Text>
-            <Text className="text-sage text-xs leading-5">
-              Log meals using AI photo scanning, track workouts & PRs, and message your personal coach.
-            </Text>
-          </NeumorphicView>
-        </TouchableOpacity>
+        {/* Brand / Header */}
+        <View className="items-center mb-6">
+          <Text className="text-4xl font-black tracking-tighter text-gold-light mb-1">TRAINR</Text>
+          <Text className="text-xs text-sage font-medium">Select Your Role</Text>
+        </View>
+
+        {/* Modal-style Container */}
+        <NeumorphicView variant="extruded" className="p-6 rounded-2xl w-full">
+          <Text className="text-lg font-bold text-center text-white mb-6">Are you a Trainer?</Text>
+          
+          <View className="space-y-4">
+            {/* Trainer Card */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleSelectTrainer}
+              disabled={isSubmitting}
+            >
+              <NeumorphicView variant="goldAccent" className="p-5 rounded-2xl items-center">
+                <View className="w-14 h-14 rounded-full bg-deepGreen-inset items-center justify-center mb-3 border border-gold-bright/30">
+                  <Text className="text-2xl">📋</Text>
+                </View>
+                <Text className="text-xs font-bold uppercase tracking-wider text-gold-light mb-1">Trainer</Text>
+                <Text className="text-xs text-sage text-center leading-5">
+                  Manage clients, build programs, generate access codes.
+                </Text>
+              </NeumorphicView>
+            </TouchableOpacity>
+
+            {/* Client Card */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleSelectClientPrompt}
+              className="mt-3"
+              disabled={isSubmitting}
+            >
+              <NeumorphicView variant="extruded" className="p-5 rounded-2xl items-center">
+                <View className="w-14 h-14 rounded-full bg-deepGreen-inset items-center justify-center mb-3 border border-deepGreen-border">
+                  <Text className="text-2xl">🏋️</Text>
+                </View>
+                <Text className="text-xs font-bold uppercase tracking-wider text-white mb-1">Client / Athlete</Text>
+                <Text className="text-xs text-sage text-center leading-5">
+                  Track workouts, view progress, connect with trainers.
+                </Text>
+              </NeumorphicView>
+            </TouchableOpacity>
+          </View>
+        </NeumorphicView>
       </View>
 
       {isSubmitting && (

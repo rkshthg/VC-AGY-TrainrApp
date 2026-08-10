@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { useProgressStore, BodyCheckIn } from '@/store/progressStore';
-import { useAuthStore } from '@/store/authStore';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { NeumorphicInput } from '@/components/NeumorphicInput';
+import { useProgressStore } from '@/features/progress/presentation/progressStore';
+import { BodyCheckIn } from '@/features/progress/domain/progress';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { NeumorphicInput } from '@/core/presentation/components/NeumorphicInput';
 
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
@@ -139,14 +140,14 @@ export default function ProgressScreen() {
       </View>
 
       {/* Main Body Weight Banner */}
-      <NeumorphicView variant="goldAccent" className="p-5 mb-6">
+      <NeumorphicView variant="goldAccent" className="p-5 mb-6 rounded-2xl">
         <View className="flex-row justify-between items-start mb-2">
           <View>
-            <Text className="text-xs text-sage font-medium uppercase tracking-wider">Current Weight</Text>
-            <Text className="text-3xl font-black text-white mt-0.5">{currentWeight} <Text className="text-base text-gold-light">kg</Text></Text>
+            <Text className="text-xs text-sage font-medium uppercase tracking-widest">Current Weight</Text>
+            <Text className="text-3xl font-black font-mono text-white mt-0.5">{currentWeight} <Text className="text-base text-gold-light">kg</Text></Text>
           </View>
           <View className={`px-3 py-1.5 rounded-full border ${parseFloat(netWeightChange) <= 0 ? 'bg-emerald-500/20 border-emerald-400/40' : 'bg-amber-500/20 border-amber-400/40'}`}>
-            <Text className={`text-xs font-bold ${parseFloat(netWeightChange) <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            <Text className={`text-xs font-mono font-bold ${parseFloat(netWeightChange) <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
               {parseFloat(netWeightChange) <= 0 ? `${netWeightChange} kg 📉` : `+${netWeightChange} kg 📈`}
             </Text>
           </View>
@@ -155,59 +156,59 @@ export default function ProgressScreen() {
         <View className="flex-row justify-between pt-3 mt-3 border-t border-gold-bright/20">
           <View>
             <Text className="text-[10px] text-sage">Starting Weight</Text>
-            <Text className="text-xs font-bold text-white mt-0.5">{startingWeight} kg</Text>
+            <Text className="text-xs font-mono font-bold text-white mt-0.5">{startingWeight} kg</Text>
           </View>
           <View>
             <Text className="text-[10px] text-sage">Body Fat %</Text>
-            <Text className="text-xs font-bold text-emerald-400 mt-0.5">{currentBodyFat}%</Text>
+            <Text className="text-xs font-mono font-bold text-emerald-400 mt-0.5">{currentBodyFat}%</Text>
           </View>
           <View>
             <Text className="text-[10px] text-sage">BMI</Text>
-            <Text className="text-xs font-bold text-white mt-0.5">{calculatedBMI}</Text>
+            <Text className="text-xs font-mono font-bold text-white mt-0.5">{calculatedBMI}</Text>
           </View>
           <View>
             <Text className="text-[10px] text-sage">FFMI</Text>
-            <Text className="text-xs font-bold text-gold-light mt-0.5">{calculatedFFMI}</Text>
+            <Text className="text-xs font-mono font-bold text-gold-light mt-0.5">{calculatedFFMI}</Text>
           </View>
         </View>
       </NeumorphicView>
 
       {/* Circumference Measurements Grid */}
-      <NeumorphicView variant="extruded" className="p-5 mb-6">
+      <NeumorphicView variant="extruded" className="p-5 mb-6 rounded-2xl">
         <Text className="text-base font-bold text-white mb-3">Circumference Tracker (cm)</Text>
         <View className="flex-row flex-wrap -mx-1.5">
           <View className="w-1/2 p-1.5">
-            <View className="bg-deepGreen-card p-3 rounded-xl border border-deepGreen-border">
+            <View className="bg-deepGreen-card p-3 rounded-2xl border border-deepGreen-border">
               <Text className="text-[11px] text-sage mb-0.5">Waist</Text>
-              <Text className="text-lg font-bold text-white">{currentWaist} <Text className="text-xs text-sage">cm</Text></Text>
+              <Text className="text-lg font-bold font-mono text-white">{currentWaist} <Text className="text-xs text-sage">cm</Text></Text>
             </View>
           </View>
           <View className="w-1/2 p-1.5">
-            <View className="bg-deepGreen-card p-3 rounded-xl border border-deepGreen-border">
+            <View className="bg-deepGreen-card p-3 rounded-2xl border border-deepGreen-border">
               <Text className="text-[11px] text-sage mb-0.5">Chest</Text>
-              <Text className="text-lg font-bold text-white">{currentChest} <Text className="text-xs text-sage">cm</Text></Text>
+              <Text className="text-lg font-bold font-mono text-white">{currentChest} <Text className="text-xs text-sage">cm</Text></Text>
             </View>
           </View>
           <View className="w-1/2 p-1.5">
-            <View className="bg-deepGreen-card p-3 rounded-xl border border-deepGreen-border">
+            <View className="bg-deepGreen-card p-3 rounded-2xl border border-deepGreen-border">
               <Text className="text-[11px] text-sage mb-0.5">Biceps</Text>
-              <Text className="text-lg font-bold text-white">{currentBicep} <Text className="text-xs text-sage">cm</Text></Text>
+              <Text className="text-lg font-bold font-mono text-white">{currentBicep} <Text className="text-xs text-sage">cm</Text></Text>
             </View>
           </View>
           <View className="w-1/2 p-1.5">
-            <View className="bg-deepGreen-card p-3 rounded-xl border border-deepGreen-border">
+            <View className="bg-deepGreen-card p-3 rounded-2xl border border-deepGreen-border">
               <Text className="text-[11px] text-sage mb-0.5">Hips</Text>
-              <Text className="text-lg font-bold text-white">{latestCheckIn?.hip_cm || 96} <Text className="text-xs text-sage">cm</Text></Text>
+              <Text className="text-lg font-bold font-mono text-white">{latestCheckIn?.hip_cm || 96} <Text className="text-xs text-sage">cm</Text></Text>
             </View>
           </View>
         </View>
       </NeumorphicView>
 
       {/* Progress Photos Gallery */}
-      <NeumorphicView variant="extruded" className="p-5 mb-6">
+      <NeumorphicView variant="extruded" className="p-5 mb-6 rounded-2xl">
         <View className="flex-row justify-between items-center mb-3">
           <Text className="text-base font-bold text-white">Progress Photos</Text>
-          <Text className="text-xs text-sage">{photosList.length} Photos</Text>
+          <Text className="text-xs font-mono text-sage">{photosList.length} Photos</Text>
         </View>
 
         {photosList.length === 0 ? (
@@ -229,7 +230,7 @@ export default function ProgressScreen() {
                   style={{ width: 110, height: 140, borderRadius: 12 }}
                   className="bg-deepGreen-card border border-deepGreen-border mb-1.5"
                 />
-                <Text className="text-[10px] text-gold-light font-bold">{p.date}</Text>
+                <Text className="text-[10px] text-gold-light font-mono font-bold">{p.date}</Text>
               </View>
             ))}
           </ScrollView>
@@ -237,19 +238,19 @@ export default function ProgressScreen() {
       </NeumorphicView>
 
       {/* Timeline Check-In History */}
-      <Text className="text-sm font-bold text-sage uppercase tracking-wider mb-3">Check-In Timeline</Text>
+      <Text className="text-sm font-bold text-sage uppercase tracking-widest mb-3">Check-In Timeline</Text>
       {checkIns.map((c) => (
-        <NeumorphicView key={c.id} variant="extruded" className="p-4 mb-3">
+        <NeumorphicView key={c.id} variant="extruded" className="p-4 mb-3 rounded-2xl">
           <View className="flex-row justify-between items-center mb-1">
-            <Text className="font-bold text-white text-sm">🗓️ {c.date}</Text>
-            <Text className="text-sm font-bold text-gold-light">{c.weight_kg} kg</Text>
+            <Text className="font-bold font-mono text-white text-sm">🗓️ {c.date}</Text>
+            <Text className="text-sm font-bold font-mono text-gold-light">{c.weight_kg} kg</Text>
           </View>
 
           <View className="flex-row flex-wrap space-x-3 mt-1">
-            {c.body_fat_percentage && <Text className="text-xs text-emerald-400">Fat: {c.body_fat_percentage}%</Text>}
-            {c.waist_cm && <Text className="text-xs text-sage">Waist: {c.waist_cm}cm</Text>}
-            {c.chest_cm && <Text className="text-xs text-sage">Chest: {c.chest_cm}cm</Text>}
-            {c.bicep_cm && <Text className="text-xs text-sage">Bicep: {c.bicep_cm}cm</Text>}
+            {c.body_fat_percentage && <Text className="text-xs font-mono text-emerald-400">Fat: {c.body_fat_percentage}%</Text>}
+            {c.waist_cm && <Text className="text-xs font-mono text-sage">Waist: {c.waist_cm}cm</Text>}
+            {c.chest_cm && <Text className="text-xs font-mono text-sage">Chest: {c.chest_cm}cm</Text>}
+            {c.bicep_cm && <Text className="text-xs font-mono text-sage">Bicep: {c.bicep_cm}cm</Text>}
           </View>
 
           {c.notes && (

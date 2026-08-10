@@ -4,10 +4,10 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
-import { supabase } from '@/lib/supabaseClient';
-import { useAuthStore } from '@/store/authStore';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
+import { supabase } from '@/core/data/supabaseClient';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -100,33 +100,54 @@ export default function SignIn() {
       className="flex-1 items-center justify-center bg-deepGreen p-6"
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
     >
-      <NeumorphicView variant="goldAccent" className="p-8 w-full max-w-sm items-center">
-        <Text className="text-3xl font-bold text-white mb-2">Welcome Back</Text>
-        <Text className="text-sm text-sage text-center mb-8">
-          Sign in to access your customized fitness roster & analytics.
-        </Text>
-        
-        <NeumorphicButton
-          title={isAuthenticating ? 'Connecting to Google...' : 'Continue with Google'}
-          variant="gold"
-          size="lg"
-          className="w-full"
-          onPress={signInWithGoogle}
-          disabled={isAuthenticating}
-        />
+      <View className="w-full max-w-sm">
+        {/* Brand Header */}
+        <View className="mb-6 items-center">
+          <Text className="text-4xl font-black text-white tracking-tighter mb-1">TRAINR</Text>
+          <Text className="text-xs text-sage text-center">High-performance tracking for elite athletes.</Text>
+        </View>
 
-        {isAuthenticating && (
-          <ActivityIndicator color="#E5C158" className="mt-4" />
-        )}
-        
-        <TouchableOpacity 
-          className="mt-6"
-          onPress={() => router.back()}
-          disabled={isAuthenticating}
-        >
-          <Text className="text-sage text-sm font-semibold">← Back</Text>
-        </TouchableOpacity>
-      </NeumorphicView>
+        {/* Auth Card Container */}
+        <NeumorphicView variant="extruded" className="p-6 w-full rounded-2xl">
+          {/* Segmented Tab Bar Layout */}
+          <View className="flex-row p-1 bg-deepGreen-inset rounded-xl mb-6">
+            <TouchableOpacity className="flex-1 py-2.5 items-center rounded-lg bg-deepGreen-elevated border border-deepGreen-border">
+              <Text className="text-xs font-bold text-white uppercase tracking-wider">Sign In</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-1 py-2.5 items-center rounded-lg"
+              onPress={() => router.replace('/(auth)/sign-up')}
+            >
+              <Text className="text-xs font-bold text-sage uppercase tracking-wider">Create Account</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text className="text-xs font-semibold text-sage text-center mb-6">
+            Sign in to access your customized workout roster & AI nutrition scanner.
+          </Text>
+
+          <NeumorphicButton
+            title={isAuthenticating ? 'Connecting to Google...' : 'Continue with Google'}
+            variant="gold"
+            size="lg"
+            className="w-full"
+            onPress={signInWithGoogle}
+            disabled={isAuthenticating}
+          />
+
+          {isAuthenticating && (
+            <ActivityIndicator color="#E5C158" className="mt-4" />
+          )}
+
+          <TouchableOpacity
+            className="mt-6 items-center"
+            onPress={() => router.back()}
+            disabled={isAuthenticating}
+          >
+            <Text className="text-sage text-xs font-semibold">← Back to Welcome</Text>
+          </TouchableOpacity>
+        </NeumorphicView>
+      </View>
     </View>
   );
 }

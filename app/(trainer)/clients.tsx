@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTrainerStore, ClientRosterItem } from '@/store/trainerStore';
-import { useAuthStore } from '@/store/authStore';
-import { useThemeStore } from '@/store/themeStore';
-import { fetchUserProfileData } from '@/services/authService';
-import { StatusBadge } from '@/components/StatusBadge';
-import { AppHeader } from '@/components/AppHeader';
-import { useRouter } from 'expo-router';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { NeumorphicInput } from '@/components/NeumorphicInput';
+import { useTrainerStore, ClientRosterItem } from '@/features/trainer/presentation/trainerStore';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { useThemeStore } from '@/core/presentation/theme/themeStore';
+import { fetchUserProfileData } from '@/features/auth/data/authService';
+import { StatusBadge } from '@/core/presentation/components/StatusBadge';
+import { AppHeader } from '@/core/presentation/components/AppHeader';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { NeumorphicInput } from '@/core/presentation/components/NeumorphicInput';
 
 export default function TrainerClientsScreen() {
   const insets = useSafeAreaInsets();
@@ -28,16 +28,19 @@ export default function TrainerClientsScreen() {
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchClients(user.id);
-      fetchUserProfileData(user.id).then((p) => {
-        if (p?.trainer_code) {
-          setTrainerCode(p.trainer_code);
-        }
-      });
-    }
-  }, [user?.id]);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        fetchClients(user.id);
+        fetchUserProfileData(user.id).then((p) => {
+          if (p?.trainer_code) {
+            setTrainerCode(p.trainer_code);
+          }
+        });
+      }
+    }, [user?.id])
+  );
+
 
   const filteredClients = clients.filter((c) => {
     if (filter === 'all') return true;
@@ -73,12 +76,12 @@ export default function TrainerClientsScreen() {
 
       {/* Trainer Code Banner */}
       {trainerCode ? (
-        <NeumorphicView variant="goldAccent" className="p-4 mb-5 flex-row justify-between items-center">
+        <NeumorphicView variant="goldAccent" className="p-4 mb-5 rounded-2xl flex-row justify-between items-center">
           <View>
-            <Text className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+            <Text className={`text-xs font-bold uppercase tracking-widest ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
               Your Trainer Code
             </Text>
-            <Text className={`text-xl font-black mt-0.5 tracking-widest ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+            <Text className={`text-xl font-black font-mono mt-0.5 tracking-widest ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
               {trainerCode}
             </Text>
           </View>
@@ -119,7 +122,7 @@ export default function TrainerClientsScreen() {
           return (
             <TouchableOpacity
               key={tab.key}
-              className={`px-4 py-2 rounded-xl border ${
+              className={`px-4 py-2 rounded-full border ${
                 isSelected
                   ? isLight ? 'bg-[#0F291E] border-[#D4AF37]' : 'bg-gold-light border-gold-bright'
                   : isLight ? 'bg-slate-100 border-slate-200' : 'bg-deepGreen-elevated border-deepGreen-border'
@@ -148,7 +151,7 @@ export default function TrainerClientsScreen() {
           className="mb-4"
           onPress={() => handleClientTap(client)}
         >
-          <NeumorphicView variant="extruded" className="p-5">
+          <NeumorphicView variant="extruded" className="p-5 rounded-2xl">
             <View className="flex-row justify-between items-start mb-3">
               <View className="flex-row items-center space-x-3">
                 {/* Status Indicator Dot */}
@@ -168,12 +171,12 @@ export default function TrainerClientsScreen() {
               <StatusBadge status={client.status_badge} />
             </View>
 
-            <NeumorphicView variant="inset" className="p-3 flex-row justify-between mb-3">
+            <NeumorphicView variant="inset" className="p-3 flex-row justify-between mb-3 rounded-2xl">
               <View>
                 <Text className={`text-xs uppercase font-bold tracking-wider ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
                   Today's Calories
                 </Text>
-                <Text className={`text-sm font-bold mt-0.5 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+                <Text className={`text-sm font-bold font-mono mt-0.5 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
                   {client.calories_logged} / {client.calorie_target} kcal
                 </Text>
               </View>
@@ -181,14 +184,14 @@ export default function TrainerClientsScreen() {
                 <Text className={`text-xs uppercase font-bold tracking-wider ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
                   Protein Target
                 </Text>
-                <Text className={`text-sm font-bold mt-0.5 ${isLight ? 'text-[#C5A028]' : 'text-gold-light'}`}>
+                <Text className={`text-sm font-bold font-mono mt-0.5 ${isLight ? 'text-[#C5A028]' : 'text-gold-light'}`}>
                   {client.protein_logged} / {client.protein_target}g
                 </Text>
               </View>
             </NeumorphicView>
 
             <View className="flex-row justify-between items-center mt-1">
-              <Text className={`text-xs ${isLight ? 'text-[#476355]' : 'text-sage'}`}>Last Workout: {client.last_workout}</Text>
+              <Text className={`text-xs font-mono ${isLight ? 'text-[#476355]' : 'text-sage'}`}>Last Workout: {client.last_workout}</Text>
               <Text className={`text-xs font-bold ${isLight ? 'text-[#C5A028]' : 'text-gold-light'}`}>
                 Open Client Dashboard →
               </Text>
@@ -233,7 +236,7 @@ export default function TrainerClientsScreen() {
                   Share this invite code with your client:
                 </Text>
                 <NeumorphicView variant="inset" className="p-4 rounded-2xl mb-4 w-full items-center">
-                  <Text className={`text-3xl font-black tracking-widest ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+                  <Text className={`text-3xl font-black font-mono tracking-widest ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
                     {generatedCode}
                   </Text>
                 </NeumorphicView>

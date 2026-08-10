@@ -3,8 +3,8 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useAuthStore } from '@/store/authStore';
-import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { supabase } from '@/core/data/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
@@ -59,7 +59,7 @@ function RootLayoutNav() {
         const storedRole = await AsyncStorage.getItem('trainr_role');
         const currentRole = useAuthStore.getState().role;
         if (!currentRole) {
-          const { getUserRole } = await import('@/services/authService');
+          const { getUserRole } = await import('@/features/auth/data/authService');
           const res = await getUserRole(session.user.id);
           const activeRole = res.role || (storedRole as any);
           if (activeRole) {

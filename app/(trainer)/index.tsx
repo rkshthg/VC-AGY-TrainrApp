@@ -1,38 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTrainerStore } from '@/store/trainerStore';
-import { useAuthStore } from '@/store/authStore';
-import { useThemeStore } from '@/store/themeStore';
-import { fetchUserProfileData } from '@/services/authService';
-import { AppHeader } from '@/components/AppHeader';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { useRouter } from 'expo-router';
+import { useTrainerStore } from '@/features/trainer/presentation/trainerStore';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { useThemeStore } from '@/core/presentation/theme/themeStore';
+import { fetchUserProfileData } from '@/features/auth/data/authService';
+import { AppHeader } from '@/core/presentation/components/AppHeader';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 export default function TrainerDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { clients, fetchClients } = useTrainerStore();
+  const { clients, notifications, fetchClients, fetchNotifications } = useTrainerStore();
   const { user, userName } = useAuthStore();
   const { theme } = useThemeStore();
   const isLight = theme === 'light';
 
   const [trainerCode, setTrainerCode] = useState<string>('');
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchClients(user.id);
-      fetchUserProfileData(user.id).then((p) => {
-        if (p?.trainer_code) {
-          setTrainerCode(p.trainer_code);
-        }
-      });
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        fetchClients(user.id);
+        fetchNotifications(user.id);
+        fetchUserProfileData(user.id).then((p) => {
+          if (p?.trainer_code) {
+            setTrainerCode(p.trainer_code);
+          }
+        });
+      }
+    }, [user?.id])
+  );
+
+  const formatNotificationTime = (rawDate?: string) => {
+    if (!rawDate) return 'Today';
+    if (['Today', 'Recently', 'Yesterday'].includes(rawDate)) return rawDate;
+    try {
+      const iso = rawDate.includes('T') ? rawDate : rawDate.replace(' ', 'T');
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return 'Today';
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return 'Today';
     }
-  }, [user?.id]);
+  };
 
   const attentionClients = clients.filter((c) => c.status_badge === 'needs_attention');
   const greetingName = userName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Trainer';
+
+  const todayDateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
 
   return (
     <ScrollView
@@ -42,21 +60,52 @@ export default function TrainerDashboard() {
         paddingBottom: Math.max(insets.bottom, 20) + 24,
       }}
     >
-      <AppHeader title="Trainer Dashboard" subtitle={`WELCOME COACH, ${greetingName.toUpperCase()}`} />
+      <AppHeader title="Trainer Dashboard" />
 
+      {/* Greeting & Date Header */}
+      <View className="mb-6">
+        <Text className={`text-3xl font-black mb-0.5 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+          Hey {greetingName}!
+        </Text>
+        <Text className={`text-xs font-mono font-bold tracking-widest ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+          {todayDateStr}
+        </Text>
+      </View>
 
-      {/* Trainer Code Sharing Banner */}
+      {/* 1. KPIs Bento Grid */}
+      <View className="flex-row space-x-3 mb-6">
+        <TouchableOpacity className="flex-1" onPress={() => router.push('/(trainer)/clients')}>
+          <NeumorphicView variant="extruded" className="p-4 items-center rounded-2xl">
+            <Text className={`text-xs font-bold uppercase tracking-wider mb-1 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+              Total Clients
+            </Text>
+            <Text className={`text-3xl font-black font-mono ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+              {clients.length}
+            </Text>
+          </NeumorphicView>
+        </TouchableOpacity>
+
+        <TouchableOpacity className="flex-1" onPress={() => router.push('/(trainer)/clients')}>
+          <NeumorphicView variant="goldAccent" className="p-4 items-center rounded-2xl">
+            <Text className={`text-xs font-bold uppercase tracking-wider mb-1 ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+              Action Required
+            </Text>
+            <Text className="text-3xl font-black font-mono text-amber-500">
+              {attentionClients.length}
+            </Text>
+          </NeumorphicView>
+        </TouchableOpacity>
+      </View>
+
+      {/* 2. Trainer Code Sharing Banner */}
       {trainerCode ? (
-        <NeumorphicView variant="goldAccent" className="p-4 mb-6 flex-row justify-between items-center">
+        <NeumorphicView variant="goldAccent" className="p-4 mb-6 rounded-2xl flex-row justify-between items-center">
           <View>
-            <Text className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+            <Text className={`text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
               Your Unique Trainer Code
             </Text>
-            <Text className={`text-2xl font-black mt-0.5 tracking-widest ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+            <Text className={`text-2xl font-black font-mono mt-0.5 tracking-widest ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
               {trainerCode}
-            </Text>
-            <Text className={`text-[10px] mt-0.5 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
-              Share with clients to automatically join your roster
             </Text>
           </View>
           <TouchableOpacity
@@ -70,68 +119,49 @@ export default function TrainerDashboard() {
         </NeumorphicView>
       ) : null}
 
-      {/* Client Notifications */}
-      <NeumorphicView variant="goldAccent" className="p-5 mb-6">
-        <View className="flex-row justify-between items-center mb-2">
-          <Text className={`font-bold text-base ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
-            Client Notifications ({attentionClients.length} Alerts)
+      {/* 3. Live Client Activity Stream */}
+      <NeumorphicView variant="extruded" className="p-5 mb-6 rounded-2xl">
+        <View className="flex-row justify-between items-center mb-3 border-b border-deepGreen-border pb-2">
+          <Text className={`text-base font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+            Client Activity Stream
           </Text>
-          <TouchableOpacity onPress={() => router.push('/(trainer)/clients')}>
-            <Text className={`text-xs font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>View Roster →</Text>
+          <TouchableOpacity onPress={() => user?.id && fetchNotifications(user.id)}>
+            <Text className={`text-xs font-bold ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>Refresh 🔄</Text>
           </TouchableOpacity>
         </View>
 
-        {attentionClients.length === 0 ? (
-          <Text className={`text-xs ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
-            All active clients are currently on track with their workout & nutrition targets!
+        {notifications.length === 0 ? (
+          <Text className={`text-xs py-2 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+            No recent activity notifications from your clients yet.
           </Text>
         ) : (
-          attentionClients.map((client) => (
-            <View key={client.id} className={`py-1.5 border-b flex-row justify-between items-center ${
-              isLight ? 'border-amber-200' : 'border-gold-bright/20'
-            }`}>
-              <Text className={`text-xs ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
-                • <Text className="font-bold">{client.name}</Text> needs attention ({client.calories_logged}/{client.calorie_target} kcal logged today).
+          notifications.slice(0, 5).map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              className={`py-2.5 px-3 mb-2 rounded-xl border flex-row justify-between items-center ${
+                isLight ? 'bg-white border-slate-200' : 'bg-deepGreen-elevated border-deepGreen-border'
+              }`}
+              onPress={() => router.push('/(trainer)/clients')}
+            >
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text className={`text-xs font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
+                  {item.title}
+                </Text>
+                <Text className={`text-[11px] mt-0.5 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+                  {item.message}
+                </Text>
+              </View>
+              <Text className={`text-[10px] font-mono font-semibold ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+                {formatNotificationTime(item.created_at)}
               </Text>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </NeumorphicView>
 
-      {/* Today's Nutrition Dashboard Overview */}
-      <NeumorphicView variant="extruded" className="p-5 mb-6">
-        <View className="flex-row justify-between items-center mb-3">
-          <Text className={`text-base font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>Client Roster Overview</Text>
-          <NeumorphicButton title="+ Invite Client" variant="gold" size="sm" onPress={() => router.push('/(trainer)/clients')} />
-        </View>
-        <Text className={`text-xs mb-3 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
-          You currently have {clients.length} active clients paired.
-        </Text>
-
-        <View className="flex-row space-x-3">
-          <TouchableOpacity className="flex-1" onPress={() => router.push('/(trainer)/clients')}>
-            <NeumorphicView variant="inset" className="p-4 items-center">
-              <Text className={`text-2xl font-black ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>{clients.length}</Text>
-              <Text className={`text-[10px] font-bold uppercase mt-1 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
-                Total Clients
-              </Text>
-            </NeumorphicView>
-          </TouchableOpacity>
-
-          <TouchableOpacity className="flex-1" onPress={() => router.push('/(trainer)/clients')}>
-            <NeumorphicView variant="inset" className="p-4 items-center">
-              <Text className="text-2xl font-black text-amber-500">{attentionClients.length}</Text>
-              <Text className={`text-[10px] font-bold uppercase mt-1 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
-                Needs Attention
-              </Text>
-            </NeumorphicView>
-          </TouchableOpacity>
-        </View>
-      </NeumorphicView>
-
-      {/* Quick Action Plan Builder Banner */}
-      <NeumorphicView variant="goldAccent" className="p-5 mb-6">
-        <Text className={`text-xs font-bold uppercase tracking-wider mb-1 ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+      {/* 4. Quick Action Programming Banner */}
+      <NeumorphicView variant="goldAccent" className="p-5 mb-6 rounded-2xl">
+        <Text className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
           PROGRAMMING
         </Text>
         <Text className={`text-xl font-black mb-1 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>

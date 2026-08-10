@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useWorkoutStore } from '@/store/workoutStore';
-import { useAuthStore } from '@/store/authStore';
-import { useThemeStore } from '@/store/themeStore';
-import { AppHeader } from '@/components/AppHeader';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { useRouter } from 'expo-router';
-import { CompletedWorkoutDetailModal } from '@/components/CompletedWorkoutDetailModal';
-import { CompletedWorkoutSummary } from '@/types/workout';
+import { useWorkoutStore } from '@/features/workout/presentation/workoutStore';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { useThemeStore } from '@/core/presentation/theme/themeStore';
+import { AppHeader } from '@/core/presentation/components/AppHeader';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { CompletedWorkoutDetailModal } from '@/features/workout/presentation/CompletedWorkoutDetailModal';
+import { CompletedWorkoutSummary } from '@/features/workout/domain/workout';
 
 export default function WorkoutsTab() {
   const insets = useSafeAreaInsets();
@@ -21,11 +21,14 @@ export default function WorkoutsTab() {
   const { activePlan, fetchPlanForUser, completedSessions, startWorkoutSession } = useWorkoutStore();
   const [selectedWorkout, setSelectedWorkout] = useState<CompletedWorkoutSummary | null>(null);
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchPlanForUser(user.id);
-    }
-  }, [user?.id]);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        fetchPlanForUser(user.id);
+      }
+    }, [user?.id])
+  );
+
 
   const handleStartWorkout = (targetDay?: any) => {
     if (targetDay) {
@@ -49,7 +52,7 @@ export default function WorkoutsTab() {
       <AppHeader title="Workout Center" subtitle="Plans, Live Tracker & History" />
 
       {/* Section 1: Quick Actions (Build Plan & Start Workout) */}
-      <NeumorphicView variant="goldAccent" className="p-5 mb-6">
+      <NeumorphicView variant="goldAccent" className="p-5 mb-6 rounded-2xl">
         <Text className={`text-base font-bold mb-1 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>Quick Training Actions</Text>
         <Text className={`text-xs mb-4 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
           Start logging live workout sets or construct a personalized training split routine.
@@ -66,7 +69,7 @@ export default function WorkoutsTab() {
           </View>
           <View className="flex-1">
             <NeumorphicButton
-              title="Build New Plan"
+              title="Build Workout Plan"
               variant="green"
               size="md"
               onPress={() => router.push('/(client)/create-plan')}
@@ -76,28 +79,29 @@ export default function WorkoutsTab() {
       </NeumorphicView>
 
       {/* Section 2: Featured Current Workout Plan */}
-      <NeumorphicView variant="extruded" className="p-5 mb-6">
+      <NeumorphicView variant="extruded" className="p-5 mb-6 rounded-2xl">
         <View className="flex-row justify-between items-center mb-2">
           <Text className={`text-base font-bold ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>Current Workout Plan</Text>
-          <View className={`px-2 py-0.5 rounded border ${
+          <View className={`px-2.5 py-0.5 rounded-full border ${
             isLight ? 'bg-amber-100 border-amber-300' : 'bg-gold-dark/40 border-gold-bright/30'
           }`}>
-            <Text className={`text-[10px] font-bold ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>Active Split</Text>
+            <Text className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>Active Split</Text>
           </View>
         </View>
 
         {!activePlan ? (
           <View className="py-4 items-center">
-            <Text className={`text-xs text-center mb-3 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
-              No active workout plan assigned. Build one or request your trainer!
+            <Text className={`text-xs text-center mb-3 font-medium ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+              No active plan assigned yet. Construct your custom split routine or request your coach!
             </Text>
             <NeumorphicButton
-              title="+ Build Your First Plan"
+              title="+ Build Workout Plan"
               variant="gold"
               size="sm"
               onPress={() => router.push('/(client)/create-plan')}
             />
           </View>
+
         ) : (
           <View>
             <Text className={`text-xl font-black mb-1 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
@@ -107,7 +111,7 @@ export default function WorkoutsTab() {
               {activePlan.description || 'Assigned Workout Plan Routine'}
             </Text>
 
-            <Text className={`text-xs font-bold uppercase tracking-wider mb-2 ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+            <Text className={`text-xs font-bold uppercase tracking-widest mb-2 ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
               Plan Days & Routines:
             </Text>
             {activePlan.days?.map((day, idx) => (
@@ -122,7 +126,7 @@ export default function WorkoutsTab() {
                   <Text className={`font-bold text-sm ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
                     Day {idx + 1}: {day.day_label || day.day_name}
                   </Text>
-                  <Text className={`text-xs ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+                  <Text className={`text-xs font-mono ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
                     {day.exercises?.length || 0} Scheduled Exercises
                   </Text>
                 </View>
@@ -134,7 +138,7 @@ export default function WorkoutsTab() {
       </NeumorphicView>
 
       {/* Section 3: History of Completed Workouts */}
-      <NeumorphicView variant="extruded" className="p-5 mb-6">
+      <NeumorphicView variant="extruded" className="p-5 mb-6 rounded-2xl">
         <Text className={`text-base font-bold mb-3 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>
           Workout History ({completedSessions.length})
         </Text>
@@ -153,7 +157,7 @@ export default function WorkoutsTab() {
             >
               <View style={{ flex: 1 }}>
                 <Text className={`font-bold text-sm mb-0.5 ${isLight ? 'text-[#0F291E]' : 'text-white'}`}>{session.title}</Text>
-                <Text className={`text-xs ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
+                <Text className={`text-xs font-mono ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
                   {session.date} • {session.duration_minutes} mins
                 </Text>
               </View>
@@ -162,7 +166,7 @@ export default function WorkoutsTab() {
                   isLight ? 'bg-amber-50 border-amber-300' : 'bg-gold-dark/30 border-gold-bright/30'
                 }`}
               >
-                <Text className={`text-xs font-bold ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
+                <Text className={`text-xs font-mono font-bold ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}>
                   {session.exercises_count} Exercises
                 </Text>
                 <Text className={`text-xs font-bold ${isLight ? 'text-[#8B6E14]' : 'text-gold-light'}`}> ➔</Text>

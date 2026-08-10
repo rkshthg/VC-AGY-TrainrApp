@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuthStore } from '@/store/authStore';
-import { useThemeStore } from '@/store/themeStore';
-import { supabase } from '@/lib/supabaseClient';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { useThemeStore } from '@/core/presentation/theme/themeStore';
+import { supabase } from '@/core/data/supabaseClient';
 import { useRouter } from 'expo-router';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { MealEntry } from '@/types/nutrition';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { MealEntry } from '@/features/nutrition/domain/nutrition';
 
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();

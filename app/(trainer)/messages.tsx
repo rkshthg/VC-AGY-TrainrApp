@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTrainerStore } from '@/store/trainerStore';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { NeumorphicInput } from '@/components/NeumorphicInput';
+import { useTrainerStore } from '@/features/trainer/presentation/trainerStore';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { NeumorphicInput } from '@/core/presentation/components/NeumorphicInput';
 
 export default function TrainerMessagesScreen() {
   const insets = useSafeAreaInsets();

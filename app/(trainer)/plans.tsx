@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { NeumorphicInput } from '@/components/NeumorphicInput';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { NeumorphicInput } from '@/core/presentation/components/NeumorphicInput';
 
 export default function PlanBuilderScreen() {
   const insets = useSafeAreaInsets();

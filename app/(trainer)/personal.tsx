@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNutritionStore } from '@/store/nutritionStore';
-import { useWorkoutStore } from '@/store/workoutStore';
-import { useAuthStore } from '@/store/authStore';
-import { useThemeStore } from '@/store/themeStore';
-import { fetchUserProfileData, linkClientToTrainerByCode, removeClientTrainerLink } from '@/services/authService';
-import { NeumorphicView } from '@/components/NeumorphicView';
-import { NeumorphicButton } from '@/components/NeumorphicButton';
-import { NeumorphicInput } from '@/components/NeumorphicInput';
+import { useNutritionStore } from '@/features/nutrition/presentation/nutritionStore';
+import { useWorkoutStore } from '@/features/workout/presentation/workoutStore';
+import { useAuthStore } from '@/features/auth/presentation/authStore';
+import { useThemeStore } from '@/core/presentation/theme/themeStore';
+import { fetchUserProfileData, linkClientToTrainerByCode, removeClientTrainerLink } from '@/features/auth/data/authService';
+import { NeumorphicView } from '@/core/presentation/components/NeumorphicView';
+import { NeumorphicButton } from '@/core/presentation/components/NeumorphicButton';
+import { NeumorphicInput } from '@/core/presentation/components/NeumorphicInput';
 
 export default function TrainerPersonalModeScreen() {
   const insets = useSafeAreaInsets();
@@ -127,25 +127,25 @@ export default function TrainerPersonalModeScreen() {
           <Text className={`text-xs mb-3 ${isLight ? 'text-[#476355]' : 'text-sage'}`}>
             Being coached by a head trainer? Enter their Trainer Code below to pair accounts.
           </Text>
-          <View className="flex-row space-x-3 items-end">
-            <View className="flex-1">
-              <NeumorphicInput
-                label="Coach Trainer Code"
-                placeholder="e.g. TR-8K92"
-                value={coachCodeInput}
-                onChangeText={setCoachCodeInput}
-                autoCapitalize="characters"
-              />
-            </View>
+          <View className="space-y-3">
+            <NeumorphicInput
+              label="Coach Trainer Code"
+              placeholder="e.g. TR-8K92"
+              value={coachCodeInput}
+              onChangeText={setCoachCodeInput}
+              autoCapitalize="characters"
+            />
             <NeumorphicButton
               title={linkingCoach ? 'Linking...' : '+ Add Coach'}
               variant="gold"
-              size="sm"
+              size="md"
               onPress={handleLinkCoach}
               disabled={linkingCoach || !coachCodeInput.trim()}
+              className="w-full"
             />
           </View>
         </NeumorphicView>
+
       )}
 
       {/* Personal Nutrition */}
