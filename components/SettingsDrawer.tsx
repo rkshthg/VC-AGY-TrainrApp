@@ -9,12 +9,14 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../store/authStore';
 import { useWorkoutStore } from '../store/workoutStore';
 import { useNutritionStore } from '../store/nutritionStore';
 import { useProgressStore } from '../store/progressStore';
 import { generateUserDataJSON } from '../lib/dataExport';
 import { CalendarLogModal } from './CalendarLogModal';
+import { useTheme } from '../lib/theme';
 
 interface SettingsDrawerProps {
   visible: boolean;
@@ -25,10 +27,9 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
   const { profile, role, themeMode, unitSystem, setThemeMode, setUnitSystem, logout, setRole } =
     useAuthStore();
   const todayMeals = useNutritionStore((state) => state.todayMeals);
-  const selectedDate = useNutritionStore((state) => state.selectedDate);
-  const setSelectedDate = useNutritionStore((state) => state.setSelectedDate);
   const workoutHistory = useWorkoutStore((state) => state.workoutHistory);
   const weightHistory = useProgressStore((state) => state.weightHistory);
+  const theme = useTheme();
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -63,129 +64,289 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.drawerContainer}>
-          <View style={styles.drawerHeader}>
-            <Text style={styles.drawerTitle}>App Settings</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
+        <View
+          style={[
+            styles.drawerContainer,
+            {
+              backgroundColor: theme.bg,
+              borderLeftColor: theme.navBorder,
+            },
+          ]}
+        >
+          {/* Header */}
+          <View
+            style={[
+              styles.drawerHeader,
+              { borderBottomColor: theme.navBorder },
+            ]}
+          >
+            <Text style={[styles.drawerTitle, { color: theme.text }]}>App Settings</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={[
+                styles.closeBtn,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Ionicons name="close-outline" size={18} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
             {/* Account Info */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>ACCOUNT IDENTITY</Text>
-              <Text style={styles.userEmailText}>{profile?.email || 'user@trainr.app'}</Text>
-              <Text style={styles.roleSubText}>
-                Role: <Text style={{ color: '#10B981', fontWeight: 'bold' }}>{role}</Text>
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>ACCOUNT IDENTITY</Text>
+              <Text style={[styles.userEmailText, { color: theme.text }]}>{profile?.email || 'user@trainr.app'}</Text>
+              <Text style={[styles.roleSubText, { color: theme.textSecondary }]}>
+                Role:{' '}
+                <Text
+                  style={{
+                    color: theme.isDark ? theme.accentGold : theme.primary,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {role}
+                </Text>
               </Text>
             </View>
 
-            {/* 📅 CALENDAR BUTTON HERO ACTION */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>LOG HISTORY CALENDAR</Text>
+            {/* CALENDAR BUTTON HERO ACTION */}
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>LOG HISTORY CALENDAR</Text>
 
               <TouchableOpacity
-                style={styles.openCalendarBtn}
+                style={[
+                  styles.openCalendarBtn,
+                  {
+                    backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                    ...theme.shadowButton,
+                  },
+                ]}
                 onPress={() => setCalendarModalVisible(true)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.openCalendarBtnIcon}>📅</Text>
+                <Ionicons name="calendar-outline" size={20} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.openCalendarBtnTitle}>Open Interactive Calendar</Text>
-                  <Text style={styles.openCalendarBtnSub}>
+                  <Text
+                    style={[
+                      styles.openCalendarBtnTitle,
+                      { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                    ]}
+                  >
+                    Open Interactive Calendar
+                  </Text>
+                  <Text
+                    style={[
+                      styles.openCalendarBtnSub,
+                      { color: theme.isDark ? '#1F3A2A' : '#E2E8F0' },
+                    ]}
+                  >
                     {role === 'TRAINER'
                       ? 'Inspect logs by date & filter client roster'
                       : 'View past logs, workouts & nutrition entries'}
                   </Text>
                 </View>
-                <Text style={styles.openCalendarArrow}>➔</Text>
+                <Ionicons name="chevron-forward-outline" size={18} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
               </TouchableOpacity>
             </View>
 
             {/* Appearance Settings */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>APPEARANCE THEME</Text>
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>APPEARANCE THEME</Text>
               <View style={styles.toggleRow}>
-                {(['LIGHT', 'DARK', 'SYSTEM'] as const).map((mode) => (
-                  <TouchableOpacity
-                    key={mode}
-                    style={[styles.toggleOption, themeMode === mode && styles.toggleOptionActive]}
-                    onPress={() => setThemeMode(mode)}
-                  >
-                    <Text
+                {(['LIGHT', 'DARK', 'SYSTEM'] as const).map((mode) => {
+                  const isActive = themeMode === mode;
+                  return (
+                    <TouchableOpacity
+                      key={mode}
                       style={[
-                        styles.toggleOptionText,
-                        themeMode === mode && styles.toggleOptionTextActive,
+                        styles.toggleOption,
+                        {
+                          backgroundColor: isActive
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.cardInner,
+                          borderColor: isActive
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.border,
+                        },
                       ]}
+                      onPress={() => setThemeMode(mode)}
                     >
-                      {mode}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.toggleOptionText,
+                          {
+                            color: isActive
+                              ? theme.isDark
+                                ? '#0A1A12'
+                                : '#FFFFFF'
+                              : theme.textSecondary,
+                            fontWeight: isActive ? 'bold' : 'normal',
+                          },
+                        ]}
+                      >
+                        {mode}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
             {/* Unit Preference */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>UNIT SYSTEM PREFERENCE</Text>
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>UNIT SYSTEM PREFERENCE</Text>
               <View style={styles.toggleRow}>
-                {(['METRIC', 'IMPERIAL'] as const).map((unit) => (
-                  <TouchableOpacity
-                    key={unit}
-                    style={[styles.toggleOption, unitSystem === unit && styles.toggleOptionActive]}
-                    onPress={() => setUnitSystem(unit)}
-                  >
-                    <Text
+                {(['METRIC', 'IMPERIAL'] as const).map((unit) => {
+                  const isActive = unitSystem === unit;
+                  return (
+                    <TouchableOpacity
+                      key={unit}
                       style={[
-                        styles.toggleOptionText,
-                        unitSystem === unit && styles.toggleOptionTextActive,
+                        styles.toggleOption,
+                        {
+                          backgroundColor: isActive
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.cardInner,
+                          borderColor: isActive
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.border,
+                        },
                       ]}
+                      onPress={() => setUnitSystem(unit)}
                     >
-                      {unit === 'METRIC' ? 'Metric (kg, cm)' : 'Imperial (lbs, ft)'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.toggleOptionText,
+                          {
+                            color: isActive
+                              ? theme.isDark
+                                ? '#0A1A12'
+                                : '#FFFFFF'
+                              : theme.textSecondary,
+                            fontWeight: isActive ? 'bold' : 'normal',
+                          },
+                        ]}
+                      >
+                        {unit === 'METRIC' ? 'Metric (kg, cm)' : 'Imperial (lbs, ft)'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
             {/* Tools & Storage */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>DATA & TOOLS</Text>
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>DATA & TOOLS</Text>
 
-              <TouchableOpacity style={styles.menuItemRow} onPress={handleExportAllData}>
-                <Text style={styles.menuItemIcon}>📦</Text>
-                <Text style={styles.menuItemText}>Export All User Data (JSON/CSV)</Text>
+              <TouchableOpacity
+                style={[styles.menuItemRow, { borderBottomColor: theme.navBorder }]}
+                onPress={handleExportAllData}
+              >
+                <Ionicons name="download-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
+                <Text style={[styles.menuItemText, { color: theme.text }]}>Export All User Data (JSON/CSV)</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.menuItemRow} onPress={handleCleanStorage}>
-                <Text style={styles.menuItemIcon}>🧹</Text>
-                <Text style={styles.menuItemText}>Clean Local Cache & Storage</Text>
+              <TouchableOpacity
+                style={[styles.menuItemRow, { borderBottomColor: 'transparent' }]}
+                onPress={handleCleanStorage}
+              >
+                <Ionicons name="trash-outline" size={18} color={theme.textSecondary} />
+                <Text style={[styles.menuItemText, { color: theme.text }]}>Clean Local Cache & Storage</Text>
               </TouchableOpacity>
             </View>
 
             {/* Account Management */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>ACCOUNT MANAGEMENT</Text>
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>ACCOUNT MANAGEMENT</Text>
 
               {role !== 'TRAINER' && (
-                <TouchableOpacity style={styles.menuItemRow} onPress={handleSwitchToTrainer}>
-                  <Text style={styles.menuItemIcon}>⚡</Text>
-                  <Text style={styles.menuItemText}>Switch to Trainer Account</Text>
+                <TouchableOpacity
+                  style={[styles.menuItemRow, { borderBottomColor: theme.navBorder }]}
+                  onPress={handleSwitchToTrainer}
+                >
+                  <Ionicons name="flash-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>Switch to Trainer Account</Text>
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity style={styles.menuItemRow} onPress={logout}>
-                <Text style={styles.menuItemIcon}>🚪</Text>
-                <Text style={[styles.menuItemText, { color: '#EF4444' }]}>Log Out</Text>
+              <TouchableOpacity
+                style={[styles.menuItemRow, { borderBottomColor: theme.navBorder }]}
+                onPress={logout}
+              >
+                <Ionicons name="log-out-outline" size={18} color={theme.danger} />
+                <Text style={[styles.menuItemText, { color: theme.danger }]}>Log Out</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.menuItemRow}
+                style={[styles.menuItemRow, { borderBottomColor: 'transparent' }]}
                 onPress={() => setShowDeleteModal(true)}
               >
-                <Text style={styles.menuItemIcon}>🗑️</Text>
-                <Text style={[styles.menuItemText, { color: '#EF4444' }]}>Delete Account</Text>
+                <Ionicons name="trash-bin-outline" size={18} color={theme.danger} />
+                <Text style={[styles.menuItemText, { color: theme.danger }]}>Delete Account</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -201,31 +362,50 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
       {/* Delete Account Confirmation Modal */}
       <Modal visible={showDeleteModal} animationType="fade" transparent={true}>
         <View style={styles.deleteModalOverlay}>
-          <View style={styles.deleteModalBox}>
-            <Text style={styles.deleteTitle}>Permanently Delete Account?</Text>
-            <Text style={styles.deleteDesc}>
+          <View
+            style={[
+              styles.deleteModalBox,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.dangerBorder,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.deleteTitle, { color: theme.danger }]}>Permanently Delete Account?</Text>
+            <Text style={[styles.deleteDesc, { color: theme.textSecondary }]}>
               This action cannot be undone. All your workout routines, meal logs, transformation photos, and client links will be wiped out.
             </Text>
 
-            <Text style={styles.confirmPromptText}>Type "DELETE" below to confirm:</Text>
+            <Text style={[styles.confirmPromptText, { color: theme.text }]}>Type "DELETE" below to confirm:</Text>
             <TextInput
-              style={styles.deleteInput}
+              style={[
+                styles.deleteInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
               value={deleteConfirmText}
               onChangeText={setDeleteConfirmText}
               placeholder="DELETE"
-              placeholderTextColor="#64748B"
+              placeholderTextColor={theme.textMuted}
               autoCapitalize="characters"
             />
 
             <View style={styles.deleteBtnRow}>
               <TouchableOpacity
-                style={styles.cancelBtn}
+                style={[
+                  styles.cancelBtn,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
                 onPress={() => setShowDeleteModal(false)}
               >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+                <Text style={[styles.cancelBtnText, { color: theme.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.confirmDeleteBtn} onPress={handleDeleteAccount}>
+              <TouchableOpacity style={[styles.confirmDeleteBtn, { backgroundColor: theme.danger }]} onPress={handleDeleteAccount}>
                 <Text style={styles.confirmDeleteBtnText}>Confirm Delete</Text>
               </TouchableOpacity>
             </View>
@@ -239,18 +419,19 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
   drawerContainer: {
-    width: '85%',
-    maxWidth: 360,
-    backgroundColor: '#0F172A',
+    width: '100%',
+    // maxWidth: '90%',
+    // maxHeight: '80%',
     height: '100%',
-    paddingTop: 50,
+    paddingTop: 26,
     paddingHorizontal: 20,
     paddingBottom: 20,
+    borderLeftWidth: 1,
   },
   drawerHeader: {
     flexDirection: 'row',
@@ -258,109 +439,70 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
     paddingBottom: 16,
   },
   drawerTitle: {
-    color: '#F8FAFC',
     fontSize: 18,
     fontWeight: 'bold',
+    letterSpacing: 0.3,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#1E293B',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#94A3B8',
     fontSize: 14,
+    fontWeight: 'bold',
   },
   scrollContent: {
     flex: 1,
   },
   sectionCard: {
-    backgroundColor: '#1E293B',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
+    borderWidth: 1,
   },
   sectionLabel: {
-    color: '#64748B',
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: 'bold',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: 10,
   },
   userEmailText: {
-    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: 'bold',
   },
   roleSubText: {
-    color: '#94A3B8',
     fontSize: 12,
     marginTop: 4,
-  },
-  dateSubText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginBottom: 10,
   },
   openCalendarBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#10B981',
     borderRadius: 14,
     padding: 12,
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 4,
   },
   openCalendarBtnIcon: {
-    fontSize: 24,
+    fontSize: 22,
   },
   openCalendarBtnTitle: {
-    color: '#064E3B',
     fontSize: 13,
     fontWeight: 'bold',
   },
   openCalendarBtnSub: {
-    color: '#064E3B',
-    fontSize: 9.5,
-    opacity: 0.85,
+    fontSize: 10,
     marginTop: 1,
   },
   openCalendarArrow: {
-    color: '#064E3B',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  datePillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  datePill: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  datePillActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
-  },
-  datePillText: {
-    color: '#94A3B8',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  datePillTextActive: {
-    color: '#10B981',
   },
   toggleRow: {
     flexDirection: 'row',
@@ -368,108 +510,84 @@ const styles = StyleSheet.create({
   },
   toggleOption: {
     flex: 1,
-    backgroundColor: '#0F172A',
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  toggleOptionActive: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
   },
   toggleOptionText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  toggleOptionTextActive: {
-    color: '#FFFFFF',
+    fontSize: 12,
   },
   menuItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
-    gap: 12,
+    gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
   },
   menuItemIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
   menuItemText: {
-    color: '#F8FAFC',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   deleteModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    justifyContent: 'center',
+    padding: 20,
   },
   deleteModalBox: {
     width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#1E293B',
+    maxWidth: 380,
     borderRadius: 20,
-    padding: 20,
+    padding: 24,
     borderWidth: 1,
-    borderColor: '#EF4444',
   },
   deleteTitle: {
-    color: '#F8FAFC',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 8,
   },
   deleteDesc: {
-    color: '#94A3B8',
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 16,
   },
   confirmPromptText: {
-    color: '#CBD5E1',
     fontSize: 12,
     fontWeight: 'bold',
     marginBottom: 8,
   },
   deleteInput: {
-    backgroundColor: '#0F172A',
-    color: '#EF4444',
-    fontSize: 14,
-    fontWeight: 'bold',
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 10,
+    fontSize: 14,
     borderWidth: 1,
-    borderColor: '#EF4444',
     marginBottom: 20,
   },
   deleteBtnRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: '#334155',
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
   },
   cancelBtnText: {
-    color: '#F8FAFC',
     fontSize: 13,
     fontWeight: 'bold',
   },
   confirmDeleteBtn: {
     flex: 1,
-    backgroundColor: '#EF4444',
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
   },
   confirmDeleteBtnText: {

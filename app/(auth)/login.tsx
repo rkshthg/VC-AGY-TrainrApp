@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../lib/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const theme = useTheme();
   const setProfile = useAuthStore((state) => state.setProfile);
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
   const [email, setEmail] = useState('');
@@ -33,52 +36,106 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.brandTitle}>Trainr ⚡</Text>
-      <Text style={styles.brandSubtitle}>Real-Time Fitness & Coaching Platform</Text>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <Text
+        style={[
+          styles.brandTitle,
+          { color: theme.isDark ? theme.accentGold : theme.primary },
+        ]}
+      >
+        Trainr
+      </Text>
+      <Text style={[styles.brandSubtitle, { color: theme.textSecondary }]}>
+        Real-Time Fitness & Coaching Platform
+      </Text>
 
-      <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Sign In</Text>
+      <View
+        style={[
+          styles.formCard,
+          {
+            backgroundColor: theme.card,
+            borderColor: theme.border,
+            ...theme.shadow,
+          },
+        ]}
+      >
+        <Text style={[styles.formTitle, { color: theme.text }]}>Sign In</Text>
 
         {/* Google OAuth Button */}
         <TouchableOpacity style={styles.googleBtn} onPress={handleGoogleLogin} activeOpacity={0.8}>
-          <Text style={styles.googleIcon}>🌐</Text>
+          <Ionicons name="logo-google" size={18} color="#0F172A" />
           <Text style={styles.googleBtnText}>Continue with Google</Text>
         </TouchableOpacity>
 
         <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>OR EMAIL</Text>
-          <View style={styles.dividerLine} />
+          <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+          <Text style={[styles.dividerText, { color: theme.textMuted }]}>OR EMAIL</Text>
+          <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
         </View>
 
-        <Text style={styles.inputLabel}>Email Address</Text>
+        <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email Address</Text>
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.inputBorder,
+              color: theme.text,
+            },
+          ]}
           value={email}
           onChangeText={setEmail}
           placeholder="user@example.com"
-          placeholderTextColor="#64748B"
+          placeholderTextColor={theme.textMuted}
           keyboardType="email-address"
           autoCapitalize="none"
         />
 
-        <Text style={styles.inputLabel}>Password</Text>
+        <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Password</Text>
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.inputBorder,
+              color: theme.text,
+            },
+          ]}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
-          placeholderTextColor="#64748B"
+          placeholderTextColor={theme.textMuted}
           secureTextEntry
         />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}>
-          <Text style={styles.primaryBtnText}>Sign In with Email</Text>
+        <TouchableOpacity
+          style={[
+            styles.primaryBtn,
+            {
+              backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+              ...theme.shadowButton,
+            },
+          ]}
+          onPress={handleLogin}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.primaryBtnText,
+              { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+            ]}
+          >
+            Sign In with Email
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.linkBtn} onPress={() => router.push('/(auth)/signup')}>
-          <Text style={styles.linkBtnText}>Don't have an account? Sign Up</Text>
+          <Text style={[styles.linkBtnText, { color: theme.textSecondary }]}>
+            Don't have an account?{' '}
+            <Text style={{ color: theme.isDark ? theme.accentGold : theme.primary, fontWeight: 'bold' }}>
+              Sign Up
+            </Text>
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -88,30 +145,26 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
   brandTitle: {
-    color: '#10B981',
     fontSize: 36,
     fontWeight: '900',
     textAlign: 'center',
   },
   brandSubtitle: {
-    color: '#94A3B8',
     fontSize: 14,
     textAlign: 'center',
     marginTop: 6,
     marginBottom: 32,
   },
   formCard: {
-    backgroundColor: '#1E293B',
     borderRadius: 24,
     padding: 24,
+    borderWidth: 1,
   },
   formTitle: {
-    color: '#F8FAFC',
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 16,
@@ -142,40 +195,32 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#334155',
   },
   dividerText: {
-    color: '#64748B',
     fontSize: 11,
     fontWeight: 'bold',
     marginHorizontal: 12,
   },
   inputLabel: {
-    color: '#CBD5E1',
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 6,
   },
   input: {
-    backgroundColor: '#0F172A',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    color: '#F8FAFC',
     fontSize: 15,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   primaryBtn: {
-    backgroundColor: '#10B981',
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 6,
   },
   primaryBtnText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -184,7 +229,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   linkBtnText: {
-    color: '#94A3B8',
     fontSize: 14,
   },
 });

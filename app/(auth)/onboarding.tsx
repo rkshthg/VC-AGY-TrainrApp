@@ -9,10 +9,13 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../lib/theme';
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const theme = useTheme();
   const { completeOnboarding, generateTrainerCode, linkTrainer } = useAuthStore();
 
   const [step, setStep] = useState(0);
@@ -90,37 +93,91 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.stepIndicator}>STEP {step + 1} OF 6</Text>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <Text
+        style={[
+          styles.stepIndicator,
+          { color: theme.isDark ? theme.accentGold : theme.primary },
+        ]}
+      >
+        STEP {step + 1} OF 6
+      </Text>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Step 0: Role Selection */}
         {step === 0 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Are you a Trainer?</Text>
-            <Text style={styles.subtitle}>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.title, { color: theme.text }]}>Are you a Trainer?</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
               Trainers get a 6-digit Trainer Code and a Clients Management Hub. Clients get structured meal and workout tracking.
             </Text>
 
             <TouchableOpacity
-              style={[styles.roleOption, role === 'CLIENT' && styles.roleOptionActive]}
+              style={[
+                styles.roleOption,
+                {
+                  backgroundColor: role === 'CLIENT'
+                    ? theme.isDark
+                      ? theme.badgeBg
+                      : '#E8F5E9'
+                    : theme.cardInner,
+                  borderColor: role === 'CLIENT'
+                    ? theme.isDark
+                      ? theme.accentGold
+                      : theme.primary
+                    : theme.border,
+                },
+              ]}
               onPress={() => setRole('CLIENT')}
             >
-              <Text style={styles.roleIcon}>🏋️</Text>
-              <View>
-                <Text style={styles.roleTitle}>No, I am a Client / Trainee</Text>
-                <Text style={styles.roleDesc}>Track personal meals, workouts & metrics</Text>
+              <Ionicons
+                name="person-outline"
+                size={24}
+                color={theme.isDark ? theme.accentGold : theme.primary}
+                style={{ marginRight: 12 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.roleTitle, { color: theme.text }]}>No, I am a Client / Trainee</Text>
+                <Text style={[styles.roleDesc, { color: theme.textSecondary }]}>Track personal meals, workouts & metrics</Text>
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.roleOption, role === 'TRAINER' && styles.roleOptionActive]}
+              style={[
+                styles.roleOption,
+                {
+                  backgroundColor: role === 'TRAINER'
+                    ? theme.isDark
+                      ? theme.badgeBg
+                      : '#E8F5E9'
+                    : theme.cardInner,
+                  borderColor: role === 'TRAINER'
+                    ? theme.isDark
+                      ? theme.accentGold
+                      : theme.primary
+                    : theme.border,
+                },
+              ]}
               onPress={() => setRole('TRAINER')}
             >
-              <Text style={styles.roleIcon}>⚡</Text>
-              <View>
-                <Text style={styles.roleTitle}>Yes, I am a Personal Trainer</Text>
-                <Text style={styles.roleDesc}>Manage clients, assign routines & live feed</Text>
+              <Ionicons
+                name="fitness-outline"
+                size={24}
+                color={theme.isDark ? theme.accentGold : theme.primary}
+                style={{ marginRight: 12 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.roleTitle, { color: theme.text }]}>Yes, I am a Personal Trainer</Text>
+                <Text style={[styles.roleDesc, { color: theme.textSecondary }]}>Manage clients, assign routines & live feed</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -128,33 +185,105 @@ export default function OnboardingScreen() {
 
         {/* Step 1: Core Info */}
         {step === 1 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Core Information</Text>
-            <Text style={styles.subtitle}>Tell us about your physical profile.</Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.title, { color: theme.text }]}>Core Information</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Tell us about your physical profile.</Text>
 
-            <Text style={styles.inputLabel}>Full Name</Text>
-            <TextInput style={styles.input} value={fullName} onChangeText={setFullName} />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Full Name</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={fullName}
+              onChangeText={setFullName}
+            />
 
-            <Text style={styles.inputLabel}>Biological Sex</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Biological Sex</Text>
             <View style={styles.chipRow}>
               {(['MALE', 'FEMALE', 'OTHER'] as const).map((s) => (
                 <TouchableOpacity
                   key={s}
-                  style={[styles.chip, sex === s && styles.chipActive]}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: sex === s
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.cardInner,
+                      borderColor: sex === s
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.border,
+                    },
+                  ]}
                   onPress={() => setSex(s)}
                 >
-                  <Text style={[styles.chipText, sex === s && styles.chipTextActive]}>{s}</Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      {
+                        color: sex === s
+                          ? theme.isDark
+                            ? '#0A1A12'
+                            : '#FFFFFF'
+                          : theme.textSecondary,
+                        fontWeight: sex === s ? 'bold' : '600',
+                      },
+                    ]}
+                  >
+                    {s}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.inputLabel}>Height (cm)</Text>
-            <TextInput style={styles.input} value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Height (cm)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={heightCm}
+              onChangeText={setHeightCm}
+              keyboardType="numeric"
+            />
 
-            <Text style={styles.inputLabel}>Current Weight (kg)</Text>
-            <TextInput style={styles.input} value={weightKg} onChangeText={setWeightKg} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Current Weight (kg)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={weightKg}
+              onChangeText={setWeightKg}
+              keyboardType="numeric"
+            />
 
-            <Text style={styles.inputLabel}>Activity Level</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Activity Level</Text>
             <View style={styles.chipRowWrap}>
               {[
                 { id: 'SEDENTARY', label: 'Sedentary' },
@@ -164,10 +293,36 @@ export default function OnboardingScreen() {
               ].map((act) => (
                 <TouchableOpacity
                   key={act.id}
-                  style={[styles.chip, activityLevel === act.id && styles.chipActive]}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: activityLevel === act.id
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.cardInner,
+                      borderColor: activityLevel === act.id
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.border,
+                    },
+                  ]}
                   onPress={() => setActivityLevel(act.id as any)}
                 >
-                  <Text style={[styles.chipText, activityLevel === act.id && styles.chipTextActive]}>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      {
+                        color: activityLevel === act.id
+                          ? theme.isDark
+                            ? '#0A1A12'
+                            : '#FFFFFF'
+                          : theme.textSecondary,
+                        fontWeight: activityLevel === act.id ? 'bold' : '600',
+                      },
+                    ]}
+                  >
                     {act.label}
                   </Text>
                 </TouchableOpacity>
@@ -178,26 +333,80 @@ export default function OnboardingScreen() {
 
         {/* Step 2: Body Measurements */}
         {step === 2 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Body Measurements (Optional)</Text>
-            <Text style={styles.subtitle}>Used for calculating Navy Body Fat %.</Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.title, { color: theme.text }]}>Body Measurements (Optional)</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Used for calculating Navy Body Fat %.</Text>
 
-            <Text style={styles.inputLabel}>Neck Circumference (cm)</Text>
-            <TextInput style={styles.input} value={neckCm} onChangeText={setNeckCm} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Neck Circumference (cm)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={neckCm}
+              onChangeText={setNeckCm}
+              keyboardType="numeric"
+            />
 
-            <Text style={styles.inputLabel}>Waist Circumference (cm)</Text>
-            <TextInput style={styles.input} value={waistCm} onChangeText={setWaistCm} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Waist Circumference (cm)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={waistCm}
+              onChangeText={setWaistCm}
+              keyboardType="numeric"
+            />
 
-            <Text style={styles.inputLabel}>Hips Circumference (cm)</Text>
-            <TextInput style={styles.input} value={hipsCm} onChangeText={setHipsCm} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Hips Circumference (cm)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={hipsCm}
+              onChangeText={setHipsCm}
+              keyboardType="numeric"
+            />
           </View>
         )}
 
         {/* Step 3: Fitness Goals */}
         {step === 3 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Select Your Fitness Goals</Text>
-            <Text style={styles.subtitle}>Choose one or multiple goals.</Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.title, { color: theme.text }]}>Select Your Fitness Goals</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Choose one or multiple goals.</Text>
 
             {[
               { id: 'FAT_LOSS', title: 'Fat Loss', desc: 'Burn fat and improve lean definition' },
@@ -207,11 +416,25 @@ export default function OnboardingScreen() {
             ].map((g) => (
               <TouchableOpacity
                 key={g.id}
-                style={[styles.goalCard, selectedGoals.includes(g.id) && styles.goalCardActive]}
+                style={[
+                  styles.goalCard,
+                  {
+                    backgroundColor: selectedGoals.includes(g.id)
+                      ? theme.isDark
+                        ? theme.badgeBg
+                        : '#E8F5E9'
+                      : theme.cardInner,
+                    borderColor: selectedGoals.includes(g.id)
+                      ? theme.isDark
+                        ? theme.accentGold
+                        : theme.primary
+                      : theme.border,
+                  },
+                ]}
                 onPress={() => toggleGoal(g.id)}
               >
-                <Text style={styles.goalTitle}>{g.title}</Text>
-                <Text style={styles.goalDesc}>{g.desc}</Text>
+                <Text style={[styles.goalTitle, { color: theme.text }]}>{g.title}</Text>
+                <Text style={[styles.goalDesc, { color: theme.textSecondary }]}>{g.desc}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -219,54 +442,141 @@ export default function OnboardingScreen() {
 
         {/* Step 4: Daily Nutrition Targets */}
         {step === 4 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Daily Nutrition Targets</Text>
-            <Text style={styles.subtitle}>Set your daily calorie & macro goals.</Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.title, { color: theme.text }]}>Daily Nutrition Targets</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Set your daily calorie & macro goals.</Text>
 
-            <Text style={styles.inputLabel}>Calorie Target (kcal)</Text>
-            <TextInput style={styles.input} value={calories} onChangeText={setCalories} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Calorie Target (kcal)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={calories}
+              onChangeText={setCalories}
+              keyboardType="numeric"
+            />
 
-            <Text style={styles.inputLabel}>Protein Target (g)</Text>
-            <TextInput style={styles.input} value={protein} onChangeText={setProtein} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Protein Target (g)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={protein}
+              onChangeText={setProtein}
+              keyboardType="numeric"
+            />
 
-            <Text style={styles.inputLabel}>Carbohydrates Target (g)</Text>
-            <TextInput style={styles.input} value={carbs} onChangeText={setCarbs} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Carbohydrates Target (g)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={carbs}
+              onChangeText={setCarbs}
+              keyboardType="numeric"
+            />
 
-            <Text style={styles.inputLabel}>Fat Target (g)</Text>
-            <TextInput style={styles.input} value={fat} onChangeText={setFat} keyboardType="numeric" />
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Fat Target (g)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={fat}
+              onChangeText={setFat}
+              keyboardType="numeric"
+            />
           </View>
         )}
 
         {/* Step 5: Trainer Pairing */}
         {step === 5 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <Text style={[styles.title, { color: theme.text }]}>
               {role === 'TRAINER' ? 'Trainer Setup & Head Trainer Link' : 'Pair With Your Trainer'}
             </Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
               {role === 'TRAINER'
                 ? 'Your unique 6-digit Trainer Code will be generated for your clients. Optionally, enter a Head Trainer Code below if you are guided by a Master Trainer.'
                 : 'Have a 6-digit Trainer Code from your personal trainer? Enter it below to link accounts (or skip to add later).'}
             </Text>
 
             <View style={{ marginTop: 14 }}>
-              <Text style={styles.inputLabel}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
                 {role === 'TRAINER' ? 'Head Trainer Code (Optional)' : '6-Digit Trainer Code (Optional)'}
               </Text>
               <TextInput
-                style={[styles.input, styles.codeInput]}
+                style={[
+                  styles.input,
+                  styles.codeInput,
+                  {
+                    backgroundColor: theme.inputBg,
+                    borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                    color: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
                 value={trainerCodeInput}
                 onChangeText={setTrainerCodeInput}
                 placeholder="TR-V95Y"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={theme.textMuted}
                 autoCapitalize="characters"
               />
             </View>
 
             {role === 'TRAINER' && (
-              <View style={styles.trainerGenNotice}>
-                <Text style={styles.trainerGenNoticeText}>
-                  ✨ Your client code will be generated upon completing setup.
+              <View
+                style={[
+                  styles.trainerGenNotice,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.trainerGenNoticeText,
+                    { color: theme.isDark ? theme.accentGold : theme.primary },
+                  ]}
+                >
+                  Your client code will be generated upon completing setup.
                 </Text>
               </View>
             )}
@@ -277,12 +587,37 @@ export default function OnboardingScreen() {
       {/* Navigation Actions */}
       <View style={styles.footerRow}>
         {step > 0 && (
-          <TouchableOpacity style={styles.backBtn} onPress={() => setStep(step - 1)}>
-            <Text style={styles.backBtnText}>Back</Text>
+          <TouchableOpacity
+            style={[
+              styles.backBtn,
+              {
+                backgroundColor: theme.cardInner,
+                borderColor: theme.border,
+              },
+            ]}
+            onPress={() => setStep(step - 1)}
+          >
+            <Text style={[styles.backBtnText, { color: theme.textSecondary }]}>Back</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-          <Text style={styles.nextBtnText}>{step === 5 ? 'Complete Setup 🚀' : 'Next Step →'}</Text>
+        <TouchableOpacity
+          style={[
+            styles.nextBtn,
+            {
+              backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+              ...theme.shadowButton,
+            },
+          ]}
+          onPress={handleNext}
+        >
+          <Text
+            style={[
+              styles.nextBtnText,
+              { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+            ]}
+          >
+            {step === 5 ? 'Complete Setup' : 'Next Step'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -292,13 +627,11 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 20,
   },
   stepIndicator: {
-    color: '#10B981',
     fontSize: 12,
     fontWeight: 'bold',
     letterSpacing: 1.5,
@@ -309,72 +642,56 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    backgroundColor: '#1E293B',
     borderRadius: 24,
     padding: 24,
+    borderWidth: 1,
   },
   title: {
-    color: '#F8FAFC',
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 6,
   },
   subtitle: {
-    color: '#94A3B8',
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 20,
   },
   inputLabel: {
-    color: '#CBD5E1',
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 6,
     marginTop: 10,
   },
   input: {
-    backgroundColor: '#0F172A',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    color: '#F8FAFC',
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   codeInput: {
     fontSize: 20,
     fontWeight: 'bold',
     textAlign: 'center',
     letterSpacing: 3,
-    color: '#10B981',
-    borderColor: '#10B981',
   },
   roleOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: 'transparent',
     gap: 16,
-  },
-  roleOptionActive: {
-    borderColor: '#10B981',
-    backgroundColor: '#064E3B',
   },
   roleIcon: {
     fontSize: 28,
   },
   roleTitle: {
-    color: '#F8FAFC',
     fontSize: 15,
     fontWeight: 'bold',
   },
   roleDesc: {
-    color: '#94A3B8',
     fontSize: 12,
     marginTop: 2,
   },
@@ -392,55 +709,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#0F172A',
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  chipActive: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
   },
   chipText: {
-    color: '#94A3B8',
     fontSize: 13,
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
   },
   goalCard: {
-    backgroundColor: '#0F172A',
     borderRadius: 14,
     padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  goalCardActive: {
-    borderColor: '#10B981',
-    backgroundColor: '#064E3B',
   },
   goalTitle: {
-    color: '#F8FAFC',
     fontSize: 15,
     fontWeight: 'bold',
   },
   goalDesc: {
-    color: '#94A3B8',
     fontSize: 12,
     marginTop: 2,
   },
   trainerGenNotice: {
     marginTop: 14,
-    backgroundColor: '#0F172A',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#064E3B',
   },
   trainerGenNoticeText: {
-    color: '#10B981',
     fontSize: 11.5,
     textAlign: 'center',
     fontWeight: '600',
@@ -454,21 +748,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderRadius: 14,
-    backgroundColor: '#334155',
+    borderWidth: 1,
   },
   backBtnText: {
-    color: '#F8FAFC',
     fontWeight: '600',
   },
   nextBtn: {
     flex: 1,
     paddingVertical: 16,
     borderRadius: 14,
-    backgroundColor: '#10B981',
     alignItems: 'center',
   },
   nextBtnText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },

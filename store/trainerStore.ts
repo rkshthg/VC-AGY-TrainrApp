@@ -27,6 +27,8 @@ export interface LiveFeedEventCard {
   tags: TagPill[];
   eventType: 'LOG_MEAL' | 'FINISH_WORKOUT' | 'UPLOAD_CHECKIN' | 'UPDATE_MEASUREMENTS' | 'MISSED_WORKOUT';
   timestamp: string;
+  photoUrl?: string;
+  updatedValues?: { label: string; value: string }[];
   detailPayload?: any;
 }
 
@@ -40,6 +42,8 @@ interface TrainerState {
   toggleAcknowledgeEvent: (eventId: string) => void;
   inspectClient: (clientId: string | null) => void;
   updateClientMacroTargets: (clientId: string, targets: { calories: number; protein: number; carbs: number; fat: number }) => void;
+  removePhotoFromLiveFeed: (photoUrl: string) => void;
+  deleteLiveFeedEventByPhotoUrl: (photoUrl: string) => void;
   unlinkClient: (clientId: string) => void;
 }
 
@@ -83,6 +87,29 @@ export const useTrainerStore = create<TrainerState>((set, get) => ({
     },
   ],
   liveFeedCards: [
+    {
+      id: 'feed_0',
+      clientId: 'cli_101',
+      clientName: 'Sarah J.',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      timeAgo: '2m ago',
+      actionVerb: 'logged',
+      targetTitle: 'a Transformation',
+      eventType: 'UPLOAD_CHECKIN',
+      tags: [
+        { label: 'Check-In', type: 'success' },
+        { label: 'Transformation', type: 'success' },
+      ],
+      photoUrl: 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400',
+      updatedValues: [
+        { label: 'Body Weight', value: '74.2 kg' },
+        { label: 'Height', value: '175 cm' },
+        { label: 'Biceps L', value: '37.0 cm' },
+        { label: 'Biceps R', value: '37.5 cm' },
+        { label: 'Waist', value: '84 cm' },
+      ],
+      timestamp: new Date(Date.now() - 120000).toISOString(),
+    },
     {
       id: 'feed_1',
       clientId: 'cli_101',
@@ -163,7 +190,25 @@ export const useTrainerStore = create<TrainerState>((set, get) => ({
     }));
   },
 
-  unlinkClient: (clientId) => {
+  removePhotoFromLiveFeed: (photoUrl) => {
+    set((state) => ({
+      liveFeedCards: state.liveFeedCards.map((card) => {
+        if (card.photoUrl === photoUrl) {
+          const { photoUrl: _, ...rest } = card;
+          return rest;
+        }
+        return card;
+      }),
+    }));
+  },
+
+  deleteLiveFeedEventByPhotoUrl: (photoUrl) => {
+    set((state) => ({
+      liveFeedCards: state.liveFeedCards.filter((card) => card.photoUrl !== photoUrl),
+    }));
+  },
+
+  unlinkClient: (clientId: string) => {
     set((state) => ({
       clients: state.clients.filter((c) => c.clientId !== clientId),
       inspectingClientId: state.inspectingClientId === clientId ? null : state.inspectingClientId,

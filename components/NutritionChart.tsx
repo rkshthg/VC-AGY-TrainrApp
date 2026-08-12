@@ -1,36 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { useNutritionStore } from '../store/nutritionStore';
-
-const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
-  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
-  return {
-    x: centerX + radius * Math.cos(angleInRadians),
-    y: centerY + radius * Math.sin(angleInRadians),
-  };
-};
-
-const describeArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number) => {
-  const clampedEnd = Math.max(startAngle + 0.1, endAngle);
-  const start = polarToCartesian(x, y, radius, clampedEnd);
-  const end = polarToCartesian(x, y, radius, startAngle);
-  const largeArcFlag = clampedEnd - startAngle <= 180 ? '0' : '1';
-  return [
-    'M', start.x.toFixed(2), start.y.toFixed(2),
-    'A', radius, radius, 0, largeArcFlag, 0, end.x.toFixed(2), end.y.toFixed(2),
-  ].join(' ');
-};
+import { useTheme } from '../lib/theme';
 
 export const NutritionChart: React.FC = () => {
   const { macroTargets, todayMeals } = useNutritionStore();
+  const theme = useTheme();
 
   let consumedCalories = 0;
   let consumedProtein = 0;
   let consumedCarbs = 0;
   let consumedFat = 0;
+  let hasLoggedFood = false;
 
   todayMeals.forEach((meal) => {
+    if (meal.items && meal.items.length > 0) {
+      hasLoggedFood = true;
+    }
     consumedCalories += meal.totalCalories || 0;
     consumedProtein += meal.totalProteinG || 0;
     consumedCarbs += meal.totalCarbsG || 0;
@@ -50,71 +37,139 @@ export const NutritionChart: React.FC = () => {
   const carbsKcal = Math.round(consumedCarbs * 4);
   const fatKcal = Math.round(consumedFat * 9);
   const remainingKcal = Math.max(0, targetCalories - consumedCalories);
-  const totalKcalTrack = Math.max(targetCalories, proteinKcal + carbsKcal + fatKcal + remainingKcal);
 
   return (
-    <View style={styles.card}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme.card,
+          borderColor: theme.border,
+          ...theme.shadow,
+        },
+      ]}
+    >
       {/* Header Row: Title + Consumed / Target Subtitle & Remaining Pill */}
       <View style={styles.energyFlowHeaderRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>Daily Energy & Macro Flow</Text>
-          <Text style={styles.energyFlowSub}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Daily Energy & Macro Flow</Text>
+          <Text style={[styles.energyFlowSub, { color: theme.textSecondary }]}>
             {consumedCalories.toLocaleString()} of {targetCalories.toLocaleString()} kcal consumed
           </Text>
         </View>
-        <View style={styles.remainingPillBadge}>
-          <Text style={styles.remainingPillText}>
-            ⚡ {remainingKcal} left
+        <View
+          style={[
+            styles.remainingPillBadge,
+            {
+              backgroundColor: theme.cardInner,
+              borderColor: theme.borderGold,
+            },
+          ]}
+        >
+          <Text style={[styles.remainingPillText, { color: theme.accentGold, flexDirection: 'row', alignItems: 'center' }]}>
+            <Ionicons name="flash-outline" size={12} color={theme.accentGold} /> {remainingKcal} left
           </Text>
         </View>
       </View>
 
       {/* Proportional Segmented Progress Bar */}
-      <View style={styles.segmentedProgressBarTrack}>
+      <View
+        style={[
+          styles.segmentedProgressBarTrack,
+          { backgroundColor: theme.cardInner, borderColor: theme.border },
+        ]}
+      >
         {proteinKcal > 0 && (
-          <View style={[styles.segmentedFill, { flex: proteinKcal, backgroundColor: '#3B82F6' }]} />
+          <View
+            style={[
+              styles.segmentedFill,
+              { flex: proteinKcal, backgroundColor: theme.macroProtein },
+            ]}
+          />
         )}
         {carbsKcal > 0 && (
-          <View style={[styles.segmentedFill, { flex: carbsKcal, backgroundColor: '#A855F7' }]} />
+          <View
+            style={[
+              styles.segmentedFill,
+              { flex: carbsKcal, backgroundColor: theme.macroCarbs },
+            ]}
+          />
         )}
         {fatKcal > 0 && (
-          <View style={[styles.segmentedFill, { flex: fatKcal, backgroundColor: '#F59E0B' }]} />
+          <View
+            style={[
+              styles.segmentedFill,
+              { flex: fatKcal, backgroundColor: theme.macroFat },
+            ]}
+          />
         )}
-        {(remainingKcal > 0 || totalKcalTrack === 0) && (
-          <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remainingKcal), backgroundColor: '#1E293B' }]} />
+        {(remainingKcal > 0 || !hasLoggedFood) && (
+          <View
+            style={[
+              styles.segmentedFillEmpty,
+              { flex: Math.max(1, remainingKcal), backgroundColor: theme.cardAlt },
+            ]}
+          />
         )}
       </View>
 
       {/* 3-Column Macro Details Grid */}
       <View style={styles.macroPillGrid}>
         {/* Protein */}
-        <View style={styles.macroPillCard}>
+        <View
+          style={[
+            styles.macroPillCard,
+            { backgroundColor: theme.cardInner, borderColor: theme.border },
+          ]}
+        >
           <View style={styles.macroPillHeader}>
-            <View style={[styles.macroDot, { backgroundColor: '#3B82F6' }]} />
-            <Text style={styles.macroPillLabel}>PROTEIN</Text>
+            <View style={[styles.macroDot, { backgroundColor: theme.macroProtein }]} />
+            <Text style={[styles.macroPillLabel, { color: theme.textSecondary }]}>PROTEIN</Text>
           </View>
-          <Text style={styles.macroPillVal}>{Math.round(consumedProtein)}g / {targetProtein}g</Text>
-          <Text style={styles.macroPillSub}>{proteinKcal} kcal ({proteinPct}%)</Text>
+          <Text style={[styles.macroPillVal, { color: theme.text }]}>
+            {Math.round(consumedProtein)}g / {targetProtein}g
+          </Text>
+          <Text style={[styles.macroPillSub, { color: theme.textMuted }]}>
+            {proteinKcal} kcal ({proteinPct}%)
+          </Text>
         </View>
 
         {/* Carbs */}
-        <View style={styles.macroPillCard}>
+        <View
+          style={[
+            styles.macroPillCard,
+            { backgroundColor: theme.cardInner, borderColor: theme.border },
+          ]}
+        >
           <View style={styles.macroPillHeader}>
-            <View style={[styles.macroDot, { backgroundColor: '#A855F7' }]} />
-            <Text style={styles.macroPillLabel}>CARBS</Text>
+            <View style={[styles.macroDot, { backgroundColor: theme.macroCarbs }]} />
+            <Text style={[styles.macroPillLabel, { color: theme.textSecondary }]}>CARBS</Text>
           </View>
-          <Text style={styles.macroPillVal}>{Math.round(consumedCarbs)}g / {targetCarbs}g</Text>
-          <Text style={styles.macroPillSub}>{carbsKcal} kcal ({carbsPct}%)</Text>
+          <Text style={[styles.macroPillVal, { color: theme.text }]}>
+            {Math.round(consumedCarbs)}g / {targetCarbs}g
+          </Text>
+          <Text style={[styles.macroPillSub, { color: theme.textMuted }]}>
+            {carbsKcal} kcal ({carbsPct}%)
+          </Text>
         </View>
 
         {/* Fat */}
-        <View style={styles.macroPillCard}>
+        <View
+          style={[
+            styles.macroPillCard,
+            { backgroundColor: theme.cardInner, borderColor: theme.border },
+          ]}
+        >
           <View style={styles.macroPillHeader}>
-            <View style={[styles.macroDot, { backgroundColor: '#F59E0B' }]} />
-            <Text style={styles.macroPillLabel}>FAT</Text>
+            <View style={[styles.macroDot, { backgroundColor: theme.macroFat }]} />
+            <Text style={[styles.macroPillLabel, { color: theme.textSecondary }]}>FAT</Text>
           </View>
-          <Text style={styles.macroPillVal}>{Math.round(consumedFat)}g / {targetFat}g</Text>
-          <Text style={styles.macroPillSub}>{fatKcal} kcal ({fatPct}%)</Text>
+          <Text style={[styles.macroPillVal, { color: theme.text }]}>
+            {Math.round(consumedFat)}g / {targetFat}g
+          </Text>
+          <Text style={[styles.macroPillSub, { color: theme.textMuted }]}>
+            {fatKcal} kcal ({fatPct}%)
+          </Text>
         </View>
       </View>
     </View>
@@ -123,15 +178,12 @@ export const NutritionChart: React.FC = () => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#091512',
     borderRadius: 22,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#10B98133',
   },
   cardTitle: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -143,30 +195,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   energyFlowSub: {
-    color: '#94A3B8',
     fontSize: 11.5,
     marginTop: 2,
   },
   remainingPillBadge: {
-    backgroundColor: '#06110D',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#EAB30844',
   },
   remainingPillText: {
-    color: '#EAB308',
     fontSize: 11,
     fontWeight: 'bold',
   },
   segmentedProgressBarTrack: {
     flexDirection: 'row',
     height: 14,
-    backgroundColor: '#1E293B',
     borderRadius: 7,
     overflow: 'hidden',
     marginBottom: 16,
+    borderWidth: 1,
     gap: 2,
   },
   segmentedFill: {
@@ -183,11 +231,9 @@ const styles = StyleSheet.create({
   },
   macroPillCard: {
     flex: 1,
-    backgroundColor: '#06110D',
     borderRadius: 14,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   macroPillHeader: {
     flexDirection: 'row',
@@ -201,19 +247,16 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   macroPillLabel: {
-    color: '#94A3B8',
     fontSize: 9.5,
     fontWeight: 'bold',
     letterSpacing: 0.5,
   },
   macroPillVal: {
-    color: '#F8FAFC',
     fontSize: 12.5,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
   macroPillSub: {
-    color: '#64748B',
     fontSize: 9.5,
     marginTop: 2,
   },

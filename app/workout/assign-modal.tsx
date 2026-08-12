@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useWorkoutStore } from '../../store/workoutStore';
+import { useTheme } from '../../lib/theme';
 
 export default function AssignModalScreen() {
   const router = useRouter();
   const { planId } = useLocalSearchParams();
   const clients = useTrainerStore((state) => state.clients);
   const savedPlans = useWorkoutStore((state) => state.savedPlans);
+  const theme = useTheme();
 
   const targetPlan = savedPlans.find((p) => p.id === planId) || savedPlans[0];
 
@@ -36,18 +39,40 @@ export default function AssignModalScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Assign Plan to Clients</Text>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>✕</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Assign Plan to Clients</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[
+            styles.closeBtn,
+            { backgroundColor: theme.cardInner, borderColor: theme.border },
+          ]}
+        >
+          <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
-          <Text style={styles.planName}>Plan: {targetPlan?.title || 'Workout Plan'}</Text>
-          <Text style={styles.planSub}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.planName,
+              { color: theme.isDark ? theme.accentGold : theme.primary },
+            ]}
+          >
+            Plan: {targetPlan?.title || 'Workout Plan'}
+          </Text>
+          <Text style={[styles.planSub, { color: theme.textSecondary }]}>
             Select the clients who should receive this workout plan on their Workout tab:
           </Text>
 
@@ -57,14 +82,38 @@ export default function AssignModalScreen() {
               return (
                 <TouchableOpacity
                   key={client.clientId}
-                  style={[styles.clientRow, isSelected && styles.clientRowActive]}
+                  style={[
+                    styles.clientRow,
+                    {
+                      backgroundColor: isSelected
+                        ? theme.isDark
+                          ? theme.badgeBg
+                          : '#E8F5E9'
+                        : theme.cardInner,
+                      borderColor: isSelected
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.border,
+                    },
+                  ]}
                   onPress={() => toggleClient(client.clientId)}
                 >
                   <View>
-                    <Text style={styles.clientName}>{client.fullName}</Text>
-                    <Text style={styles.clientEmail}>{client.email}</Text>
+                    <Text style={[styles.clientName, { color: theme.text }]}>{client.fullName}</Text>
+                    <Text style={[styles.clientEmail, { color: theme.textMuted }]}>{client.email}</Text>
                   </View>
-                  <Text style={styles.checkIcon}>{isSelected ? '✅' : '⭕'}</Text>
+                  <Ionicons
+                    name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={20}
+                    color={
+                      isSelected
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.textMuted
+                    }
+                  />
                 </TouchableOpacity>
               );
             })}
@@ -72,8 +121,24 @@ export default function AssignModalScreen() {
         </View>
       </ScrollView>
 
-      <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmAssignment}>
-        <Text style={styles.confirmBtnText}>Confirm Assignment 🎯</Text>
+      <TouchableOpacity
+        style={[
+          styles.confirmBtn,
+          {
+            backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+            ...theme.shadowButton,
+          },
+        ]}
+        onPress={handleConfirmAssignment}
+      >
+        <Text
+          style={[
+            styles.confirmBtnText,
+            { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+          ]}
+        >
+          Confirm Assignment
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -82,7 +147,6 @@ export default function AssignModalScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 20,
@@ -94,7 +158,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    color: '#F8FAFC',
     fontSize: 20,
     fontWeight: 'bold',
   },
@@ -102,30 +165,27 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E293B',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#94A3B8',
     fontSize: 16,
   },
   scrollContent: {
     flex: 1,
   },
   card: {
-    backgroundColor: '#1E293B',
     borderRadius: 24,
     padding: 20,
+    borderWidth: 1,
   },
   planName: {
-    color: '#10B981',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 4,
   },
   planSub: {
-    color: '#94A3B8',
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 20,
@@ -137,23 +197,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  clientRowActive: {
-    borderColor: '#10B981',
-    backgroundColor: '#064E3B',
   },
   clientName: {
-    color: '#F8FAFC',
     fontSize: 15,
     fontWeight: 'bold',
   },
   clientEmail: {
-    color: '#94A3B8',
     fontSize: 12,
     marginTop: 2,
   },
@@ -161,14 +213,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   confirmBtn: {
-    backgroundColor: '#10B981',
     borderRadius: 16,
     paddingVertical: 18,
     alignItems: 'center',
     marginTop: 10,
   },
   confirmBtnText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },

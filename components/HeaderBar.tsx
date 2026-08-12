@@ -7,7 +7,9 @@ import {
   Image,
 } from 'react-native';
 import { usePathname } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../store/authStore';
+import { useTheme } from '../lib/theme';
 
 interface HeaderBarProps {
   onOpenSettings: () => void;
@@ -18,6 +20,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenSettings, title }) =
   const profile = useAuthStore((state) => state.profile);
   const role = useAuthStore((state) => state.role);
   const pathname = usePathname();
+  const theme = useTheme();
 
   const fullName = profile?.fullName ? profile.fullName.toUpperCase() : 'USER';
   const firstName = fullName.split(' ')[0] || 'USER';
@@ -37,14 +40,40 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenSettings, title }) =
   const displayTitle = getDynamicTitle();
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.headerBg,
+          borderBottomColor: theme.navBorder,
+        },
+      ]}
+    >
       {/* LEFT: PROFILE AVATAR */}
       <View style={styles.leftSection}>
         <View style={styles.avatarTouchable}>
           {profile?.avatarUrl ? (
-            <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
+            <Image
+              source={{ uri: profile.avatarUrl }}
+              style={[
+                styles.avatarImage,
+                { borderColor: theme.isDark ? theme.accentGold : theme.primary },
+              ]}
+            />
           ) : (
-            <View style={[styles.avatar, role === 'TRAINER' ? styles.avatarTrainer : styles.avatarClient]}>
+            <View
+              style={[
+                styles.avatar,
+                {
+                  backgroundColor:
+                    role === 'TRAINER'
+                      ? theme.accentGold
+                      : theme.isDark
+                        ? theme.accentGreen
+                        : theme.primary,
+                },
+              ]}
+            >
               <Text style={styles.avatarText}>{fullName.charAt(0).toUpperCase()}</Text>
             </View>
           )}
@@ -53,15 +82,25 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenSettings, title }) =
 
       {/* CENTER: DYNAMIC TITLE */}
       <View style={styles.centerSection}>
-        <Text style={styles.greetingText} numberOfLines={1}>
+        <Text style={[styles.greetingText, { color: theme.text }]} numberOfLines={1}>
           {displayTitle}
         </Text>
       </View>
 
       {/* RIGHT: HAMBURGER MENU */}
       <View style={styles.rightSection}>
-        <TouchableOpacity style={styles.menuButton} onPress={onOpenSettings} activeOpacity={0.7}>
-          <Text style={styles.menuIcon}>☰</Text>
+        <TouchableOpacity
+          style={[
+            styles.menuButton,
+            {
+              backgroundColor: theme.cardInner,
+              borderColor: theme.border,
+            },
+          ]}
+          onPress={onOpenSettings}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="menu-outline" size={22} color={theme.text} />
         </TouchableOpacity>
       </View>
     </View>
@@ -74,14 +113,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: '#0F172A',
+    paddingTop: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
   },
   leftSection: {
-    width: 46,
+    width: 40,
     alignItems: 'flex-start',
     justifyContent: 'center',
   },
@@ -95,53 +132,44 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 2,
-    borderColor: '#10B981',
-  },
-  avatarClient: {
-    backgroundColor: '#10B981',
-  },
-  avatarTrainer: {
-    backgroundColor: '#F59E0B',
   },
   avatarText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-    fontSize: 18,
+    fontSize: 16,
   },
   greetingText: {
-    color: '#F8FAFC',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     textAlign: 'center',
     letterSpacing: 0.5,
   },
   rightSection: {
-    width: 46,
+    width: 40,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
   menuButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#1E293B',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   menuIcon: {
-    color: '#F8FAFC',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });

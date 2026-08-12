@@ -9,15 +9,18 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useNutritionStore, FoodItem } from '../../store/nutritionStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../lib/theme';
 
 export default function VerifyMealScreen() {
   const router = useRouter();
   const { pendingScanResult, saveMealEntry, clearPendingScanResult } = useNutritionStore();
   const addLiveFeedEvent = useTrainerStore((state) => state.addLiveFeedEvent);
   const profile = useAuthStore((state) => state.profile);
+  const theme = useTheme();
 
   const [dishName, setDishName] = useState(pendingScanResult?.dishName || 'Paneer Butter Masala & 2 Chapatis');
   const [category, setCategory] = useState<'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACKS'>(
@@ -99,99 +102,264 @@ export default function VerifyMealScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Verify & Edit Meal Items</Text>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>✕</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Verify & Edit Meal Items</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[
+            styles.closeBtn,
+            { backgroundColor: theme.cardInner, borderColor: theme.border },
+          ]}
+        >
+          <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
-          <Text style={styles.inputLabel}>Meal Category</Text>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Meal Category</Text>
           <View style={styles.categoryPickerRow}>
             {(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACKS'] as const).map((cat) => (
               <TouchableOpacity
                 key={cat}
-                style={[styles.categoryPill, category === cat && styles.categoryPillActive]}
+                style={[
+                  styles.categoryPill,
+                  {
+                    backgroundColor:
+                      category === cat
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.cardInner,
+                    borderColor:
+                      category === cat
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.border,
+                  },
+                ]}
                 onPress={() => setCategory(cat)}
               >
-                <Text style={[styles.categoryPillText, category === cat && styles.categoryPillTextActive]}>
+                <Text
+                  style={[
+                    styles.categoryPillText,
+                    {
+                      color:
+                        category === cat
+                          ? theme.isDark
+                            ? '#0A1A12'
+                            : '#FFFFFF'
+                          : theme.textSecondary,
+                    },
+                  ]}
+                >
                   {cat}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={styles.inputLabel}>Dish Title</Text>
-          <TextInput style={styles.input} value={dishName} onChangeText={setDishName} />
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Dish Title</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+                color: theme.text,
+              },
+            ]}
+            value={dishName}
+            onChangeText={setDishName}
+          />
 
-          <Text style={styles.sectionHeader}>Adjust Total Macros</Text>
+          <Text
+            style={[
+              styles.sectionHeader,
+              { color: theme.isDark ? theme.accentGold : theme.primary },
+            ]}
+          >
+            Adjust Total Macros
+          </Text>
 
           <View style={styles.macroGrid}>
             <View style={styles.macroCol}>
-              <Text style={styles.macroLabel}>Calories (kcal)</Text>
-              <TextInput style={styles.macroInput} value={calories} onChangeText={setCalories} keyboardType="numeric" />
+              <Text style={[styles.macroLabel, { color: theme.textMuted }]}>Calories (kcal)</Text>
+              <TextInput
+                style={[
+                  styles.macroInput,
+                  {
+                    backgroundColor: theme.inputBg,
+                    borderColor: theme.inputBorder,
+                    color: theme.text,
+                  },
+                ]}
+                value={calories}
+                onChangeText={setCalories}
+                keyboardType="numeric"
+              />
             </View>
             <View style={styles.macroCol}>
-              <Text style={styles.macroLabel}>Protein (g)</Text>
-              <TextInput style={styles.macroInput} value={protein} onChangeText={setProtein} keyboardType="numeric" />
+              <Text style={[styles.macroLabel, { color: theme.textMuted }]}>Protein (g)</Text>
+              <TextInput
+                style={[
+                  styles.macroInput,
+                  {
+                    backgroundColor: theme.inputBg,
+                    borderColor: theme.inputBorder,
+                    color: theme.text,
+                  },
+                ]}
+                value={protein}
+                onChangeText={setProtein}
+                keyboardType="numeric"
+              />
             </View>
           </View>
 
           <View style={styles.macroGrid}>
             <View style={styles.macroCol}>
-              <Text style={styles.macroLabel}>Carbs (g)</Text>
-              <TextInput style={styles.macroInput} value={carbs} onChangeText={setCarbs} keyboardType="numeric" />
+              <Text style={[styles.macroLabel, { color: theme.textMuted }]}>Carbs (g)</Text>
+              <TextInput
+                style={[
+                  styles.macroInput,
+                  {
+                    backgroundColor: theme.inputBg,
+                    borderColor: theme.inputBorder,
+                    color: theme.text,
+                  },
+                ]}
+                value={carbs}
+                onChangeText={setCarbs}
+                keyboardType="numeric"
+              />
             </View>
             <View style={styles.macroCol}>
-              <Text style={styles.macroLabel}>Fat (g)</Text>
-              <TextInput style={styles.macroInput} value={fat} onChangeText={setFat} keyboardType="numeric" />
+              <Text style={[styles.macroLabel, { color: theme.textMuted }]}>Fat (g)</Text>
+              <TextInput
+                style={[
+                  styles.macroInput,
+                  {
+                    backgroundColor: theme.inputBg,
+                    borderColor: theme.inputBorder,
+                    color: theme.text,
+                  },
+                ]}
+                value={fat}
+                onChangeText={setFat}
+                keyboardType="numeric"
+              />
             </View>
           </View>
 
           {/* Editable Identified Items List */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 }}>
-            <Text style={styles.sectionHeader}>Identified Meal Items ({items.length})</Text>
-            <TouchableOpacity onPress={handleAddItem} style={styles.addItemBtn}>
-              <Text style={styles.addItemBtnText}>+ Add Item</Text>
+            <Text
+              style={[
+                styles.sectionHeader,
+                { color: theme.isDark ? theme.accentGold : theme.primary, marginBottom: 0 },
+              ]}
+            >
+              Identified Meal Items ({items.length})
+            </Text>
+            <TouchableOpacity
+              onPress={handleAddItem}
+              style={[
+                styles.addItemBtn,
+                {
+                  backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                  borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.addItemBtnText,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                + Add Item
+              </Text>
             </TouchableOpacity>
           </View>
 
           {items.map((item, idx) => (
-            <View key={idx} style={styles.editableItemCard}>
+            <View
+              key={idx}
+              style={[
+                styles.editableItemCard,
+                {
+                  backgroundColor: theme.cardInner,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
               <View style={styles.itemRowTop}>
                 <TextInput
-                  style={styles.itemNameInput}
+                  style={[styles.itemNameInput, { color: theme.text }]}
                   value={item.name}
                   onChangeText={(val) => handleUpdateItemName(idx, val)}
-                  placeholder="Item Name"
-                  placeholderTextColor="#64748B"
+                  placeholder="Food item name..."
+                  placeholderTextColor={theme.textMuted}
                 />
                 <TouchableOpacity onPress={() => handleRemoveItem(idx)}>
-                  <Text style={styles.removeItemText}>✕</Text>
+                  <Ionicons name="close-outline" size={16} color={theme.danger} />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.itemRowSub}>
                 <TextInput
-                  style={styles.itemQtyInput}
+                  style={[styles.itemQtyInput, { color: theme.textSecondary }]}
                   value={item.quantity}
                   onChangeText={(val) => handleUpdateItemQty(idx, val)}
-                  placeholder="Serving size / Portion"
-                  placeholderTextColor="#64748B"
+                  placeholder="Quantity (e.g. 1 bowl)..."
+                  placeholderTextColor={theme.textMuted}
                 />
-                <Text style={styles.itemKcalBadge}>{item.calories} kcal</Text>
+                <Text
+                  style={[
+                    styles.itemKcalBadge,
+                    { color: theme.isDark ? theme.accentGold : theme.primary },
+                  ]}
+                >
+                  {item.calories} kcal
+                </Text>
               </View>
             </View>
           ))}
         </View>
-      </ScrollView>
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleConfirmSave} activeOpacity={0.8}>
-        <Text style={styles.saveBtnText}>Save Meal Log ✅</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.saveBtn,
+            {
+              backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+              ...theme.shadowButton,
+            },
+          ]}
+          onPress={handleConfirmSave}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.saveBtnText,
+              { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+            ]}
+          >
+            Log Meal Entry
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -199,7 +367,6 @@ export default function VerifyMealScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 20,
@@ -208,23 +375,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   title: {
-    color: '#F8FAFC',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   closeBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E293B',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#94A3B8',
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -232,15 +397,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    backgroundColor: '#091512',
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#10B98133',
   },
   inputLabel: {
-    color: '#94A3B8',
     fontSize: 11.5,
     fontWeight: 'bold',
     marginBottom: 6,
@@ -252,39 +414,25 @@ const styles = StyleSheet.create({
   },
   categoryPill: {
     flex: 1,
-    backgroundColor: '#0F172A',
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  categoryPillActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
   },
   categoryPillText: {
-    color: '#94A3B8',
     fontSize: 9.5,
     fontWeight: 'bold',
   },
-  categoryPillTextActive: {
-    color: '#10B981',
-  },
   input: {
-    backgroundColor: '#0F172A',
-    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: 'bold',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
     marginBottom: 16,
   },
   sectionHeader: {
-    color: '#A7F3D0',
     fontSize: 13,
     fontWeight: 'bold',
     marginBottom: 8,
@@ -298,13 +446,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   macroLabel: {
-    color: '#64748B',
     fontSize: 10.5,
     marginBottom: 4,
   },
   macroInput: {
-    backgroundColor: '#0F172A',
-    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: 'bold',
     fontFamily: 'monospace',
@@ -312,28 +457,22 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   addItemBtn: {
-    backgroundColor: '#064E3B',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   addItemBtnText: {
-    color: '#10B981',
     fontSize: 11,
     fontWeight: 'bold',
   },
   editableItemCard: {
-    backgroundColor: '#0C1E19',
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   itemRowTop: {
     flexDirection: 'row',
@@ -343,14 +482,12 @@ const styles = StyleSheet.create({
   },
   itemNameInput: {
     flex: 1,
-    color: '#F8FAFC',
     fontSize: 13,
     fontWeight: 'bold',
     paddingVertical: 2,
     marginRight: 8,
   },
   removeItemText: {
-    color: '#EF4444',
     fontSize: 14,
     fontWeight: 'bold',
     paddingHorizontal: 6,
@@ -362,24 +499,20 @@ const styles = StyleSheet.create({
   },
   itemQtyInput: {
     flex: 1,
-    color: '#94A3B8',
     fontSize: 11,
     paddingVertical: 2,
   },
   itemKcalBadge: {
-    color: '#10B981',
     fontSize: 11,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
   saveBtn: {
-    backgroundColor: '#10B981',
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
   },
   saveBtnText: {
-    color: '#064E3B',
     fontSize: 15,
     fontWeight: 'bold',
   },

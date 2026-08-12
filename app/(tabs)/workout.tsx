@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { HeaderBar } from '../../components/HeaderBar';
 import { SettingsDrawer } from '../../components/SettingsDrawer';
 import { LoggedWorkoutCard } from '../../components/LoggedWorkoutCard';
 import { useWorkoutStore, WorkoutPlan } from '../../store/workoutStore';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../lib/theme';
 
 export default function WorkoutScreen() {
   const router = useRouter();
   const role = useAuthStore((state) => state.role);
+  const theme = useTheme();
   const {
     savedPlans,
     activePlanId,
     activeRoutineDayIndexMap,
+    workoutHistory,
     setActivePlan,
     setActiveRoutineDayIndex,
-    workoutHistory,
     startSession,
-    createPlan,
     deletePlan,
+    createPlan,
   } = useWorkoutStore();
+
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [expandedRoutineIds, setExpandedRoutineIds] = useState<Record<string, boolean>>({});
   const [menuOpenPlanId, setMenuOpenPlanId] = useState<string | null>(null);
@@ -79,8 +83,6 @@ export default function WorkoutScreen() {
       : null;
 
   // Filter saved routines based on assignment:
-  // If Client is selected, routine shows on the Client's Saved Routines.
-  // Else (no client selected), it shows on the Trainer's Saved Routines!
   const displayedSavedPlans = savedPlans.filter((plan) => {
     const isAssigned = plan.assignedClientIds && plan.assignedClientIds.length > 0;
     if (role === 'TRAINER') {
@@ -117,63 +119,100 @@ export default function WorkoutScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* SECTION 1: KPI Quick Stats Bar */}
-        <View style={styles.kpiContainer}>
+        <View
+          style={[
+            styles.kpiContainer,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
           {/* Workouts This Week */}
           <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>WORKOUTS THIS WEEK</Text>
-            <Text style={styles.kpiVal}>{sessionsThisWeekCount} / 4</Text>
-            <Text style={styles.kpiSub}>Past 7 Days</Text>
+            <Text style={[styles.kpiLabel, { color: theme.textSecondary }]}>WORKOUTS THIS WEEK</Text>
+            <Text style={[styles.kpiVal, { color: theme.text }]}>{sessionsThisWeekCount} / 4</Text>
+            <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Past 7 Days</Text>
           </View>
 
-          <View style={styles.kpiDivider} />
+          <View style={[styles.kpiDivider, { backgroundColor: theme.border }]} />
 
           {/* Total Volume */}
           <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>TOTAL VOLUME</Text>
-            <Text style={styles.kpiVal}>
+            <Text style={[styles.kpiLabel, { color: theme.textSecondary }]}>TOTAL VOLUME</Text>
+            <Text style={[styles.kpiVal, { color: theme.text }]}>
               {totalVolumeKg >= 1000 ? `${(totalVolumeKg / 1000).toFixed(1)}k` : totalVolumeKg}
               <Text style={{ fontSize: 12, fontWeight: 'normal' }}> kg</Text>
             </Text>
-            <Text style={styles.kpiSub}>Accumulated</Text>
+            <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Accumulated</Text>
           </View>
 
-          <View style={styles.kpiDivider} />
+          <View style={[styles.kpiDivider, { backgroundColor: theme.border }]} />
 
           {/* Active Streak */}
           <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>ACTIVE STREAK</Text>
-            <Text style={styles.kpiVal}>🔥 4 Days</Text>
-            <Text style={styles.kpiSub}>Consistent</Text>
+            <Text style={[styles.kpiLabel, { color: theme.textSecondary }]}>ACTIVE STREAK</Text>
+            <Text
+              style={[
+                styles.kpiVal,
+                { color: theme.isDark ? theme.accentGold : theme.primary },
+              ]}
+            >
+              4 Days
+            </Text>
+            <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Consistent</Text>
           </View>
         </View>
 
         {/* MERGED SINGLE ACTIVE ROUTINE & WORKOUT LAUNCHER CARD */}
-        <View style={styles.activeRoutineMergedCard}>
+        <View
+          style={[
+            styles.activeRoutineMergedCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.isDark ? theme.accentGold : theme.primary,
+              ...theme.shadow,
+            },
+          ]}
+        >
           {/* Header Row */}
           <View style={styles.activeRoutineHeader}>
-            <View style={styles.badgeActiveTag}>
-              <Text style={styles.badgeActiveTagText}>
-                {role === 'CLIENT' ? '⚡ ASSIGNED ROUTINE' : '⚡ ACTIVE ROUTINE'}
+            <View
+              style={[
+                styles.badgeActiveTag,
+                {
+                  backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeActiveTagText,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                {role === 'CLIENT' ? 'ASSIGNED ROUTINE' : 'ACTIVE ROUTINE'}
               </Text>
             </View>
 
-            <Text style={styles.dayCountText}>
+            <Text style={[styles.dayCountText, { color: theme.textSecondary }]}>
               {activePlan ? `${activePlan.days.length}-Day Split` : 'Freestyle'}
             </Text>
           </View>
 
           {/* Routine Name */}
-          <Text style={styles.activeRoutineTitle}>
+          <Text style={[styles.activeRoutineTitle, { color: theme.text }]}>
             {activePlan ? activePlan.title : 'Freestyle Workout Session'}
           </Text>
 
           {/* Next Workout Subtitle */}
-          <Text style={styles.activeRoutineSub}>
+          <Text style={[styles.activeRoutineSub, { color: theme.textSecondary }]}>
             Next Workout: {nextWorkoutDay ? nextWorkoutDay.dayName : 'Freestyle Session'}
           </Text>
 
@@ -185,12 +224,37 @@ export default function WorkoutScreen() {
                 return (
                   <TouchableOpacity
                     key={day.id || idx}
-                    style={[styles.dayChipPill, isNextUp && styles.dayChipPillActive]}
+                    style={[
+                      styles.dayChipPill,
+                      {
+                        backgroundColor: isNextUp
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.cardInner,
+                        borderColor: isNextUp
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.border,
+                      },
+                    ]}
                     onPress={() => setActiveRoutineDayIndex(activePlan.id, idx)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.dayChipPillText, isNextUp && styles.dayChipPillTextActive]}>
-                      {isNextUp ? '⚡ ' : ''}
+                    <Text
+                      style={[
+                        styles.dayChipPillText,
+                        {
+                          color: isNextUp
+                            ? theme.isDark
+                              ? '#0A1A12'
+                              : '#FFFFFF'
+                            : theme.textSecondary,
+                          fontWeight: isNextUp ? 'bold' : '600',
+                        },
+                      ]}
+                    >
                       {day.dayName.includes(':') ? day.dayName.split(':')[1].trim() : day.dayName}
                     </Text>
                   </TouchableOpacity>
@@ -202,33 +266,67 @@ export default function WorkoutScreen() {
           {/* Action Buttons Row: [ Start Freestyle ] [ Start Routine ] */}
           <View style={styles.mergedActionBtnRow}>
             <TouchableOpacity
-              style={styles.startFreestyleBtnMerged}
+              style={[
+                styles.startFreestyleBtnMerged,
+                {
+                  backgroundColor: theme.cardInner,
+                  borderColor: theme.border,
+                },
+              ]}
               onPress={handleStartFreestyle}
               activeOpacity={0.85}
             >
-              <Text style={styles.startFreestyleBtnMergedText}>⚡ Start Freestyle</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="flash-outline" size={16} color={theme.text} />
+                <Text style={[styles.startFreestyleBtnMergedText, { color: theme.text }]}>
+                  Start Freestyle
+                </Text>
+              </View>
             </TouchableOpacity>
 
             {activePlan && (
               <TouchableOpacity
-                style={styles.startRoutineBtnMerged}
+                style={[
+                  styles.startRoutineBtnMerged,
+                  {
+                    backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                    ...theme.shadowButton,
+                  },
+                ]}
                 onPress={() => handleStartPlanSession(activePlan, activeDayIndex)}
                 activeOpacity={0.85}
               >
-                <Text style={styles.startRoutineBtnMergedText}>
-                  ▶️ Start Routine
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="play-outline" size={16} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
+                  <Text
+                    style={[
+                      styles.startRoutineBtnMergedText,
+                      { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                    ]}
+                  >
+                    Start Routine
+                  </Text>
+                </View>
               </TouchableOpacity>
             )}
           </View>
         </View>
 
         {/* SECTION 4: Saved Routines Library */}
-        <View style={styles.sectionCard}>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
           <View style={styles.sectionHeaderRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionHeaderTitle}>Saved Routines</Text>
-              <Text style={styles.sectionHeaderSub}>
+              <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>Saved Routines</Text>
+              <Text style={[styles.sectionHeaderSub, { color: theme.textSecondary }]}>
                 {role === 'TRAINER'
                   ? 'Build & assign 1-week workout routines for clients'
                   : 'Your personal 1-week planned workout routines'}
@@ -236,17 +334,37 @@ export default function WorkoutScreen() {
             </View>
 
             <TouchableOpacity
-              style={styles.buildRoutineBtn}
+              style={[
+                styles.buildRoutineBtn,
+                {
+                  backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                  ...theme.shadowButton,
+                },
+              ]}
               onPress={() => router.push('/workout/builder')}
               activeOpacity={0.85}
             >
-              <Text style={styles.buildRoutineBtnText}>+ Build Routine</Text>
+              <Text
+                style={[
+                  styles.buildRoutineBtnText,
+                  { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                ]}
+              >
+                + Build Routine
+              </Text>
             </TouchableOpacity>
           </View>
 
           {displayedSavedPlans.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No saved workout routines found. Tap "+ Build Routine" to create one!</Text>
+            <View
+              style={[
+                styles.emptyContainer,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                No saved workout routines found. Tap "+ Build Routine" to create one!
+              </Text>
             </View>
           ) : (
             displayedSavedPlans.map((plan) => {
@@ -264,7 +382,14 @@ export default function WorkoutScreen() {
                   key={plan.id}
                   style={[
                     styles.routineCard,
-                    isActiveRoutine && styles.routineCardActive,
+                    {
+                      backgroundColor: theme.cardInner,
+                      borderColor: isActiveRoutine
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.border,
+                    },
                     menuOpenPlanId === plan.id && { zIndex: 999 },
                   ]}
                 >
@@ -272,68 +397,155 @@ export default function WorkoutScreen() {
                   <View style={styles.routineCardHeader}>
                     <View style={{ flex: 1, marginRight: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={styles.routineTitle}>{plan.title}</Text>
+                        <Text style={[styles.routineTitle, { color: theme.text }]}>{plan.title}</Text>
                         {isActiveRoutine && (
-                          <View style={styles.activeTagBadge}>
-                            <Text style={styles.activeTagBadgeText}>⚡ ACTIVE</Text>
+                          <View
+                            style={[
+                              styles.activeTagBadge,
+                              {
+                                backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                                borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.activeTagBadgeText,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                            >
+                              ACTIVE
+                            </Text>
                           </View>
                         )}
                         {isAssigned && (
-                          <View style={styles.assignedTag}>
-                            <Text style={styles.assignedTagText}>Assigned</Text>
+                          <View
+                            style={[
+                              styles.assignedTag,
+                              { backgroundColor: theme.cardAlt, borderColor: theme.border },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.assignedTagText,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                            >
+                              Assigned
+                            </Text>
                           </View>
                         )}
                       </View>
 
-                      <Text style={styles.routineDaysSubtitle}>
-                        📅 {plan.days.length} Days / Wk • 💪 {totalExercisesCount} Exercises
+                      <Text style={[styles.routineDaysSubtitle, { color: theme.textSecondary }]}>
+                        {plan.days.length} Days / Wk • {totalExercisesCount} Exercises
                       </Text>
                     </View>
 
                     {/* 3-Dot Overflow Menu Button */}
                     <TouchableOpacity
-                      style={styles.overflowMenuBtn}
+                      style={[
+                        styles.overflowMenuBtn,
+                        {
+                          backgroundColor: theme.cardAlt,
+                          borderColor: theme.border,
+                        },
+                      ]}
                       onPress={() => setMenuOpenPlanId(menuOpenPlanId === plan.id ? null : plan.id)}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.overflowMenuBtnText}>⋮</Text>
+                      <Ionicons name="ellipsis-vertical" size={16} color={theme.text} />
                     </TouchableOpacity>
                   </View>
 
                   {/* Dropdown Accordion Toggle Button Row */}
                   <TouchableOpacity
-                    style={[styles.daysAccordionBtn, isExpanded && styles.daysAccordionBtnActive]}
+                    style={[
+                      styles.daysAccordionBtn,
+                      {
+                        backgroundColor: isExpanded
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.cardAlt,
+                        borderColor: isExpanded
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.border,
+                      },
+                    ]}
                     onPress={() => toggleRoutineAccordion(plan.id)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.daysAccordionBtnText, isExpanded && styles.daysAccordionBtnTextActive]}>
-                      {isExpanded ? '▲ Hide Workout Days' : `▼ View ${plan.days.length} Workout Days`}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons
+                        name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                        size={12}
+                        color={
+                          isExpanded
+                            ? theme.isDark
+                              ? '#0A1A12'
+                              : '#FFFFFF'
+                            : theme.textSecondary
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.daysAccordionBtnText,
+                          {
+                            color: isExpanded
+                              ? theme.isDark
+                                ? '#0A1A12'
+                                : '#FFFFFF'
+                              : theme.textSecondary,
+                          },
+                        ]}
+                      >
+                        {isExpanded ? 'Hide Workout Days' : `View ${plan.days.length} Workout Days`}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
 
                   {/* Collapsible Accordion Content */}
                   {isExpanded && (
                     <>
-                      <View style={styles.routineDivider} />
+                      <View style={[styles.routineDivider, { backgroundColor: theme.border }]} />
 
                       <View style={styles.accordionDaysList}>
                         {plan.days.map((day, dIdx) => (
-                          <View key={day.id || dIdx} style={styles.dayAccordionCard}>
-                            <Text style={styles.dayAccordionTitle}>
-                              ⚡ {day.dayName}
+                          <View
+                            key={day.id || dIdx}
+                            style={[
+                              styles.dayAccordionCard,
+                              {
+                                backgroundColor: theme.card,
+                                borderColor: theme.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.dayAccordionTitle,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                            >
+                              {day.dayName}
                             </Text>
 
                             {day.exercises && day.exercises.length > 0 ? (
                               day.exercises.map((ex, eIdx) => (
-                                <Text key={eIdx} style={styles.dayAccordionExText}>
+                                <Text key={eIdx} style={[styles.dayAccordionExText, { color: theme.text }]}>
                                   • {ex.name}{' '}
-                                  <Text style={styles.dayAccordionExSub}>
+                                  <Text style={[styles.dayAccordionExSub, { color: theme.textMuted }]}>
                                     ({ex.targetSets} Sets • {ex.targetReps || '8-10 reps'})
                                   </Text>
                                 </Text>
                               ))
                             ) : (
-                              <Text style={styles.dayAccordionEmptyText}>No exercises added</Text>
+                              <Text style={[styles.dayAccordionEmptyText, { color: theme.textMuted }]}>
+                                No exercises added
+                              </Text>
                             )}
                           </View>
                         ))}
@@ -341,70 +553,114 @@ export default function WorkoutScreen() {
                     </>
                   )}
 
-                  {/* Full-Width Active Action Button (NO START SESSION BUTTON) */}
+                  {/* Full-Width Active Action Button */}
                   <View style={styles.routineActionBarSingle}>
                     {!isActiveRoutine ? (
                       <TouchableOpacity
-                        style={styles.setActiveFullBtn}
+                        style={[
+                          styles.setActiveFullBtn,
+                          {
+                            backgroundColor: theme.cardAlt,
+                            borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                          },
+                        ]}
                         onPress={() => setActivePlan(plan.id)}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.setActiveFullBtnText}>★ Set as Active Routine</Text>
+                        <Text
+                          style={[
+                            styles.setActiveFullBtnText,
+                            { color: theme.isDark ? theme.accentGold : theme.primary },
+                          ]}
+                        >
+                          Make Active Routine
+                        </Text>
                       </TouchableOpacity>
                     ) : (
-                      <View style={styles.activeStatusFullPill}>
-                        <Text style={styles.activeStatusFullPillText}>✓ Active Routine</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.setActiveFullBtnActive,
+                          {
+                            backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                            borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                          },
+                        ]}
+                        onPress={() => handleStartPlanSession(plan)}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.setActiveFullBtnTextActive,
+                            { color: theme.isDark ? theme.accentGold : theme.primary },
+                          ]}
+                        >
+                          Launch Next Workout
+                        </Text>
+                      </TouchableOpacity>
                     )}
                   </View>
 
-                  {/* 3-Dot Overflow Context Menu Popup */}
+                  {/* OVERFLOW MENU MODAL / POPUP OVERLAY */}
                   {menuOpenPlanId === plan.id && (
-                    <View style={styles.overflowMenuPopup}>
-                      <TouchableOpacity
-                        style={styles.menuPopupItem}
-                        onPress={() => handleEditPlan(plan)}
-                      >
-                        <Text style={styles.menuPopupItemText}>✏️ Edit Routine</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.menuPopupItem}
-                        onPress={() => handleDuplicatePlan(plan)}
-                      >
-                        <Text style={styles.menuPopupItemText}>📋 Duplicate Routine</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.menuPopupItem}
-                        onPress={() => handleExportJson(plan)}
-                      >
-                        <Text style={styles.menuPopupItemText}>📥 Export JSON</Text>
-                      </TouchableOpacity>
-
-                      {/* Visible ONLY for Trainer Accounts */}
+                    <View
+                      style={[
+                        styles.overflowMenuDropdown,
+                        {
+                          backgroundColor: theme.card,
+                          borderColor: theme.border,
+                          ...theme.shadow,
+                        },
+                      ]}
+                    >
                       {role === 'TRAINER' && (
                         <TouchableOpacity
-                          style={styles.menuPopupItem}
+                          style={[styles.overflowMenuItem, { borderBottomColor: theme.border }]}
                           onPress={() => {
                             setMenuOpenPlanId(null);
-                            router.push(`/workout/builder?assignPlanId=${plan.id}`);
+                            router.push({
+                              pathname: '/workout/assign-modal',
+                              params: { planId: plan.id },
+                            });
                           }}
                         >
-                          <Text style={styles.menuPopupItemText}>👥 Assign to Client</Text>
+                          <Ionicons name="people-outline" size={16} color={theme.isDark ? theme.accentGold : theme.primary} />
+                          <Text style={[styles.overflowMenuText, { color: theme.text }]}>Assign to Client</Text>
                         </TouchableOpacity>
                       )}
 
-                      <View style={styles.menuPopupDivider} />
+                      <TouchableOpacity
+                        style={[styles.overflowMenuItem, { borderBottomColor: theme.border }]}
+                        onPress={() => handleEditPlan(plan)}
+                      >
+                        <Ionicons name="create-outline" size={16} color={theme.text} />
+                        <Text style={[styles.overflowMenuText, { color: theme.text }]}>Edit Routine</Text>
+                      </TouchableOpacity>
 
                       <TouchableOpacity
-                        style={styles.menuPopupItem}
+                        style={[styles.overflowMenuItem, { borderBottomColor: theme.border }]}
+                        onPress={() => handleDuplicatePlan(plan)}
+                      >
+                        <Ionicons name="copy-outline" size={16} color={theme.text} />
+                        <Text style={[styles.overflowMenuText, { color: theme.text }]}>Duplicate Routine</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.overflowMenuItem, { borderBottomColor: theme.border }]}
+                        onPress={() => handleExportJson(plan)}
+                      >
+                        <Ionicons name="download-outline" size={16} color={theme.text} />
+                        <Text style={[styles.overflowMenuText, { color: theme.text }]}>Export JSON File</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.overflowMenuItem}
                         onPress={() => {
                           setMenuOpenPlanId(null);
                           handleDeletePlan(plan.id, plan.title);
                         }}
                       >
-                        <Text style={styles.menuPopupItemTextDanger}>🗑️ Delete Routine</Text>
+                        <Ionicons name="trash-outline" size={16} color={theme.danger} />
+                        <Text style={[styles.overflowMenuText, { color: theme.danger }]}>Delete Routine</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -414,18 +670,36 @@ export default function WorkoutScreen() {
           )}
         </View>
 
-        {/* SECTION 5: Workout History (as cards) */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeaderTitle}>Workout History</Text>
-          <Text style={styles.sectionHeaderSub}>Log of completed workout sessions and performance</Text>
+        {/* SECTION 5: Workout Session Logs */}
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>Workout Session Log</Text>
+          <Text style={[styles.sectionHeaderSub, { color: theme.textSecondary, marginBottom: 16 }]}>
+            Past logged workouts and total volume records
+          </Text>
 
           {workoutHistory.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No workout sessions recorded yet.</Text>
+            <View
+              style={[
+                styles.emptyContainer,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                No past logged workout sessions recorded yet.
+              </Text>
             </View>
           ) : (
-            workoutHistory.map((session) => (
-              <LoggedWorkoutCard key={session.id} session={session} />
+            workoutHistory.map((session, index) => (
+              <LoggedWorkoutCard key={session.id || index} session={session} />
             ))
           )}
         </View>
@@ -439,98 +713,49 @@ export default function WorkoutScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
   },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 40,
   },
-
-  /* SECTION 1: KPI Quick Stats Bar */
   kpiContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#171E2D',
-    borderRadius: 22,
+    borderRadius: 20,
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 20,
+    paddingHorizontal: 12,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    alignItems: 'center',
   },
   kpiCard: {
     flex: 1,
     alignItems: 'center',
   },
-  kpiDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: '#334155',
-  },
   kpiLabel: {
-    color: '#94A3B8',
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: 'bold',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   kpiVal: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
-    marginTop: 2,
+    fontFamily: 'monospace',
   },
   kpiSub: {
-    color: '#64748B',
     fontSize: 9.5,
     marginTop: 1,
   },
-
-  /* SECTION 2: Prominent "Start Workout" Launcher Card */
+  kpiDivider: {
+    width: 1,
+    height: 28,
+  },
   activeRoutineMergedCard: {
-    backgroundColor: '#171E2D',
     borderRadius: 22,
-    padding: 20,
-    marginBottom: 20,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#10B981',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  mergedActionBtnRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  startFreestyleBtnMerged: {
-    flex: 1,
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  startFreestyleBtnMergedText: {
-    color: '#F8FAFC',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  startRoutineBtnMerged: {
-    flex: 1.2,
-    backgroundColor: '#10B981',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  startRoutineBtnMergedText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: 'bold',
   },
   activeRoutineHeader: {
     flexDirection: 'row',
@@ -539,121 +764,115 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   badgeActiveTag: {
-    backgroundColor: '#064E3B',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   badgeActiveTagText: {
-    color: '#10B981',
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: 'bold',
+    letterSpacing: 0.8,
   },
   dayCountText: {
-    color: '#94A3B8',
     fontSize: 11,
-    fontWeight: '600',
-  },
-  activeRoutineTitle: {
-    color: '#F8FAFC',
-    fontSize: 18,
     fontWeight: 'bold',
   },
+  activeRoutineTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
   activeRoutineSub: {
-    color: '#94A3B8',
-    fontSize: 12.5,
-    marginTop: 4,
-    marginBottom: 14,
+    fontSize: 12,
+    marginBottom: 12,
   },
   dayChipsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 10,
+    flexWrap: 'wrap',
+    marginBottom: 14,
   },
   dayChipPill: {
-    backgroundColor: '#0F172A',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  dayChipPillActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
   },
   dayChipPillText: {
-    color: '#CBD5E1',
     fontSize: 11,
-    fontWeight: '600',
   },
-  dayChipPillTextActive: {
-    color: '#10B981',
+  mergedActionBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  startFreestyleBtnMerged: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startFreestyleBtnMergedText: {
+    fontSize: 13,
     fontWeight: 'bold',
   },
-
-  /* SECTION 4: Saved Routines Library */
+  startRoutineBtnMerged: {
+    flex: 1.2,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startRoutineBtnMergedText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
   sectionCard: {
-    backgroundColor: '#171E2D',
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 20,
-    marginBottom: 20,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   sectionHeaderTitle: {
-    color: '#F8FAFC',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   sectionHeaderSub: {
-    color: '#94A3B8',
-    fontSize: 11,
+    fontSize: 11.5,
     marginTop: 2,
   },
   buildRoutineBtn: {
-    backgroundColor: '#10B981',
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 10,
   },
   buildRoutineBtnText: {
-    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: 'bold',
   },
   emptyContainer: {
-    backgroundColor: '#0F172A',
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   emptyText: {
-    color: '#64748B',
     fontSize: 13,
     fontStyle: 'italic',
     textAlign: 'center',
   },
   routineCard: {
-    backgroundColor: '#091512',
     borderRadius: 20,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#10B98133',
     position: 'relative',
-  },
-  routineCardActive: {
-    borderColor: '#10B981',
-    backgroundColor: '#0A1B16',
   },
   routineCardHeader: {
     flexDirection: 'row',
@@ -661,79 +880,53 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   routineTitle: {
-    color: '#F8FAFC',
     fontSize: 15,
     fontWeight: 'bold',
   },
   activeTagBadge: {
-    backgroundColor: '#064E3B',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   activeTagBadgeText: {
-    color: '#10B981',
     fontSize: 9,
     fontWeight: 'bold',
   },
   assignedTag: {
-    backgroundColor: '#1E293B',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   assignedTagText: {
-    color: '#10B981',
     fontSize: 9,
     fontWeight: 'bold',
   },
   routineDaysSubtitle: {
-    color: '#94A3B8',
     fontSize: 12,
     marginTop: 2,
   },
   overflowMenuBtn: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    backgroundColor: '#0F172A',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  overflowMenuBtnText: {
-    color: '#CBD5E1',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   daysAccordionBtn: {
-    backgroundColor: '#0F172A',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
     alignItems: 'center',
     marginTop: 10,
   },
-  daysAccordionBtnActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
-  },
   daysAccordionBtnText: {
-    color: '#CBD5E1',
     fontSize: 11,
     fontWeight: 'bold',
   },
-  daysAccordionBtnTextActive: {
-    color: '#10B981',
-  },
   routineDivider: {
     height: 1,
-    backgroundColor: '#10B98122',
     marginVertical: 12,
   },
   accordionDaysList: {
@@ -741,191 +934,68 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   dayAccordionCard: {
-    backgroundColor: '#0C1E19',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   dayAccordionTitle: {
-    color: '#A7F3D0',
     fontSize: 12.5,
     fontWeight: 'bold',
     marginBottom: 6,
   },
   dayAccordionExText: {
-    color: '#F8FAFC',
     fontSize: 12,
     marginBottom: 3,
   },
   dayAccordionExSub: {
-    color: '#64748B',
     fontSize: 10.5,
   },
   dayAccordionEmptyText: {
-    color: '#64748B',
     fontSize: 11,
     fontStyle: 'italic',
   },
   routineActionBarSingle: {
-    marginTop: 12,
+    marginTop: 10,
   },
   setActiveFullBtn: {
-    backgroundColor: '#0F172A',
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#10B981',
+    alignItems: 'center',
   },
   setActiveFullBtnText: {
-    color: '#10B981',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  activeStatusFullPill: {
-    backgroundColor: '#064E3B',
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#10B981',
-  },
-  activeStatusFullPillText: {
-    color: '#10B981',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  overflowMenuPopup: {
-    position: 'absolute',
-    top: 48,
-    right: 16,
-    backgroundColor: '#0F172A',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-    paddingVertical: 6,
-    width: 175,
-    zIndex: 9999,
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-  },
-  menuPopupItem: {
-    paddingHorizontal: 14,
+  setActiveFullBtnActive: {
     paddingVertical: 8,
-  },
-  menuPopupItemText: {
-    color: '#F8FAFC',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  menuPopupDivider: {
-    height: 1,
-    backgroundColor: '#334155',
-    marginVertical: 4,
-  },
-  menuPopupItemTextDanger: {
-    color: '#EF4444',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  exerciseTag: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  exerciseTagText: {
-    color: '#CBD5E1',
-    fontSize: 10.5,
-  },
-  exerciseTagMore: {
-    backgroundColor: '#334155',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  exerciseTagMoreText: {
-    color: '#94A3B8',
-    fontSize: 10.5,
-    fontWeight: 'bold',
-  },
-  routineActionBar: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  startSessionMiniBtn: {
-    flex: 1,
-    backgroundColor: '#10B981',
     borderRadius: 10,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  startSessionMiniBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  assignClientBtn: {
-    flex: 1,
-    backgroundColor: '#334155',
-    borderRadius: 10,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  assignClientBtnText: {
-    color: '#F8FAFC',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-
-  /* SECTION 5: Workout History Cards */
-  historyCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#334155',
-    gap: 12,
-  },
-  historyIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: '#1E293B',
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  historyTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
+  setActiveFullBtnTextActive: {
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  historyMetaRow: {
+  overflowMenuDropdown: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    width: 170,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  overflowMenuItem: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
-  historyMetaTag: {
-    color: '#94A3B8',
-    fontSize: 11,
-  },
-  historyDateBadge: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  historyDateText: {
-    color: '#CBD5E1',
-    fontSize: 11,
-    fontWeight: 'bold',
+  overflowMenuText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

@@ -11,11 +11,13 @@ import {
   Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useProgressStore } from '../../store/progressStore';
 import { useWorkoutStore } from '../../store/workoutStore';
 import { useAuthStore } from '../../store/authStore';
 import { WeeklyProfileAnalytics } from '../../components/WeeklyProfileAnalytics';
+import { useTheme } from '../../lib/theme';
 
 export default function ClientInspectionDetailScreen() {
   const router = useRouter();
@@ -24,6 +26,7 @@ export default function ClientInspectionDetailScreen() {
   const { weightHistory, checkinPhotos, getCalculatedMetrics, deleteCheckinPhoto } = useProgressStore();
   const personalRecords = useWorkoutStore((state) => state.personalRecords);
   const profile = useAuthStore((state) => state.profile);
+  const theme = useTheme();
 
   // Edit Targets Modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -76,7 +79,6 @@ export default function ClientInspectionDetailScreen() {
 
   const targetCal = client?.targetCalories || 2100;
   const loggedCal = client?.todayCaloriesLogged || 1850;
-  const calPct = Math.min(100, Math.round((loggedCal / targetCal) * 100));
 
   const targetProtein = Math.round((targetCal * 0.3) / 4);
   const loggedProtein = Math.round((loggedCal * 0.3) / 4);
@@ -118,76 +120,150 @@ export default function ClientInspectionDetailScreen() {
         name: 'Tricep Rope Pushdown',
         sets: [
           { setNum: 1, weight: 32, reps: 12 },
-          { setNum: 2, weight: 35, reps: 12 },
-          { setNum: 3, weight: 35, reps: 10 },
+          { setNum: 2, weight: 36, reps: 10 },
+          { setNum: 3, weight: 36, reps: 10 },
         ],
       },
     ],
   };
 
   const sampleLoggedMeals = [
-    { title: '🍳 Breakfast', desc: 'Oatmeal, Whole Eggs & Blueberries', kcal: 520 },
-    { title: '🥗 Lunch', desc: 'Grilled Chicken Breast, Brown Rice & Broccoli', kcal: 680 },
-    { title: '🐟 Dinner', desc: 'Pan-seared Salmon & Asparagus', kcal: 650 },
+    { title: 'Breakfast: Eggs & Sourdough Toast', desc: '3 Whole Eggs, 2 Toast, Butter', kcal: 520 },
+    { title: 'Lunch: Grilled Chicken & Rice', desc: '200g Chicken, 150g Rice, Broccoli', kcal: 680 },
+    { title: 'Dinner: Salmon & Roasted Veggies', desc: '180g Salmon, Asparagus, Olive Oil', kcal: 650 },
   ];
 
   return (
-    <View style={styles.container}>
-      {/* Top Header Bar */}
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      {/* Top Header Card */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={styles.headerAvatar}>
-            <Text style={styles.headerAvatarText}>{client?.fullName.charAt(0) || 'C'}</Text>
+          <View
+            style={[
+              styles.headerAvatar,
+              {
+                backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                borderColor: theme.isDark ? theme.accentGold : theme.primary,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.headerAvatarText,
+                { color: theme.isDark ? theme.accentGold : theme.primary },
+              ]}
+            >
+              {client?.fullName?.charAt(0) || 'C'}
+            </Text>
           </View>
           <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.clientName}>{client?.fullName || 'Client Profile'}</Text>
-              <View style={client?.status === 'ON_TRACK' ? styles.badgeSuccess : styles.badgeAlert}>
-                <Text style={client?.status === 'ON_TRACK' ? styles.badgeSuccessText : styles.badgeAlertText}>
-                  {client?.status === 'ON_TRACK' ? '⚡ ON TRACK' : '⚠️ ATTENTION'}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.clientName, { color: theme.text }]}>{client?.fullName}</Text>
+              <View
+                style={[
+                  client?.status === 'ON_TRACK' ? styles.badgeSuccess : styles.badgeAlert,
+                  {
+                    backgroundColor:
+                      client?.status === 'ON_TRACK'
+                        ? theme.isDark
+                          ? theme.badgeBg
+                          : '#E8F5E9'
+                        : theme.isDark
+                        ? '#3B1A08'
+                        : '#FEF3C7',
+                    borderColor: client?.status === 'ON_TRACK' ? theme.success : theme.warning,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    client?.status === 'ON_TRACK' ? styles.badgeSuccessText : styles.badgeAlertText,
+                    { color: client?.status === 'ON_TRACK' ? theme.success : theme.warning },
+                  ]}
+                >
+                  {client?.status === 'ON_TRACK' ? 'On Track' : 'Attention'}
                 </Text>
               </View>
             </View>
-            <Text style={styles.headerSubText}>
-              Assigned: {client?.currentPlanTitle || 'No Active Routine'}
+            <Text style={[styles.headerSubText, { color: theme.textSecondary }]}>
+              Plan: {client?.currentPlanTitle || 'No Plan'} • Goal: Hypertrophy
             </Text>
           </View>
         </View>
 
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>✕</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[
+            styles.closeBtn,
+            { backgroundColor: theme.cardInner, borderColor: theme.border },
+          ]}
+        >
+          <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* 1️⃣ SECTION 1: TODAY'S OVERVIEW (PROGRESS, NUTRITION & WORKOUT) */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>1️⃣ Today's Overview</Text>
+        {/* SECTION 1: TODAY'S LOGS */}
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Today's Logged Activity</Text>
 
-          {/* Today's Daily Nutrition Section with Edit Targets Action */}
-          <View style={styles.subCard}>
+          {/* Today's Nutrition Breakdown */}
+          <View
+            style={[
+              styles.subCard,
+              { backgroundColor: theme.cardInner, borderColor: theme.border },
+            ]}
+          >
             <View style={styles.nutritionCardHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.subCardTitle}>🥗 Today's Daily Nutrition</Text>
-                <Text style={styles.subCardBadge}>
-                  {loggedCal.toLocaleString()} of {targetCal.toLocaleString()} kcal ({calPct}%)
+              <View>
+                <Text
+                  style={[
+                    styles.subCardTitle,
+                    { color: theme.isDark ? theme.accentGold : theme.primary },
+                  ]}
+                >
+                  Today's Nutrition
+                </Text>
+                <Text style={[styles.subCardBadge, { color: theme.textSecondary }]}>
+                  {loggedCal.toLocaleString()} of {targetCal.toLocaleString()} kcal consumed
                 </Text>
               </View>
 
-              {/* 🎯 Edit Targets Button */}
               <TouchableOpacity
-                style={styles.btnEditTargets}
+                style={[
+                  styles.btnEditTargets,
+                  {
+                    backgroundColor: theme.cardAlt,
+                    borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
                 onPress={() => {
-                  setTargetCaloriesInput(String(client?.targetCalories || 2100));
+                  setTargetCaloriesInput(String(targetCal));
                   setEditModalVisible(true);
                 }}
                 activeOpacity={0.8}
               >
-                <Text style={styles.btnEditTargetsText}>🎯 Edit Targets</Text>
+                <Text
+                  style={[
+                    styles.btnEditTargetsText,
+                    { color: theme.isDark ? theme.accentGold : theme.primary },
+                  ]}
+                >
+                  Edit Target
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Proportional Segmented Progress Bar & Macro Grid */}
+            {/* Segmented Energy Flow Bar */}
             {(() => {
               const pKcal = Math.round(loggedProtein * 4);
               const cKcal = Math.round(loggedCarbs * 4);
@@ -197,51 +273,71 @@ export default function ClientInspectionDetailScreen() {
 
               return (
                 <>
-                  <View style={styles.segmentedProgressBarTrack}>
+                  <View
+                    style={[
+                      styles.segmentedProgressBarTrack,
+                      { backgroundColor: theme.cardInner, borderColor: theme.border },
+                    ]}
+                  >
                     {pKcal > 0 && (
-                      <View style={[styles.segmentedFill, { flex: pKcal, backgroundColor: '#3B82F6' }]} />
+                      <View style={[styles.segmentedFill, { flex: pKcal, backgroundColor: theme.macroProtein }]} />
                     )}
                     {cKcal > 0 && (
-                      <View style={[styles.segmentedFill, { flex: cKcal, backgroundColor: '#A855F7' }]} />
+                      <View style={[styles.segmentedFill, { flex: cKcal, backgroundColor: theme.macroCarbs }]} />
                     )}
                     {fKcal > 0 && (
-                      <View style={[styles.segmentedFill, { flex: fKcal, backgroundColor: '#F59E0B' }]} />
+                      <View style={[styles.segmentedFill, { flex: fKcal, backgroundColor: theme.macroFat }]} />
                     )}
                     {(remKcal > 0 || totKcalTrack === 0) && (
-                      <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remKcal), backgroundColor: '#1E293B' }]} />
+                      <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remKcal), backgroundColor: theme.cardAlt }]} />
                     )}
                   </View>
 
                   {/* 3-Column Macro Details Grid */}
                   <View style={styles.macroPillGrid}>
                     {/* Protein */}
-                    <View style={styles.macroPillCard}>
+                    <View
+                      style={[
+                        styles.macroPillCard,
+                        { backgroundColor: theme.card, borderColor: theme.border },
+                      ]}
+                    >
                       <View style={styles.macroPillHeader}>
-                        <View style={[styles.macroDot, { backgroundColor: '#3B82F6' }]} />
-                        <Text style={styles.macroPillLabel}>PROTEIN</Text>
+                        <View style={[styles.macroDot, { backgroundColor: theme.macroProtein }]} />
+                        <Text style={[styles.macroPillLabel, { color: theme.textSecondary }]}>PROTEIN</Text>
                       </View>
-                      <Text style={styles.macroPillVal}>{loggedProtein}g / {targetProtein}g</Text>
-                      <Text style={styles.macroPillSub}>{pKcal} kcal ({proteinPct}%)</Text>
+                      <Text style={[styles.macroPillVal, { color: theme.text }]}>{loggedProtein}g / {targetProtein}g</Text>
+                      <Text style={[styles.macroPillSub, { color: theme.textMuted }]}>{pKcal} kcal ({proteinPct}%)</Text>
                     </View>
 
                     {/* Carbs */}
-                    <View style={styles.macroPillCard}>
+                    <View
+                      style={[
+                        styles.macroPillCard,
+                        { backgroundColor: theme.card, borderColor: theme.border },
+                      ]}
+                    >
                       <View style={styles.macroPillHeader}>
-                        <View style={[styles.macroDot, { backgroundColor: '#A855F7' }]} />
-                        <Text style={styles.macroPillLabel}>CARBS</Text>
+                        <View style={[styles.macroDot, { backgroundColor: theme.macroCarbs }]} />
+                        <Text style={[styles.macroPillLabel, { color: theme.textSecondary }]}>CARBS</Text>
                       </View>
-                      <Text style={styles.macroPillVal}>{loggedCarbs}g / {targetCarbs}g</Text>
-                      <Text style={styles.macroPillSub}>{cKcal} kcal ({carbsPct}%)</Text>
+                      <Text style={[styles.macroPillVal, { color: theme.text }]}>{loggedCarbs}g / {targetCarbs}g</Text>
+                      <Text style={[styles.macroPillSub, { color: theme.textMuted }]}>{cKcal} kcal ({carbsPct}%)</Text>
                     </View>
 
                     {/* Fat */}
-                    <View style={styles.macroPillCard}>
+                    <View
+                      style={[
+                        styles.macroPillCard,
+                        { backgroundColor: theme.card, borderColor: theme.border },
+                      ]}
+                    >
                       <View style={styles.macroPillHeader}>
-                        <View style={[styles.macroDot, { backgroundColor: '#F59E0B' }]} />
-                        <Text style={styles.macroPillLabel}>FAT</Text>
+                        <View style={[styles.macroDot, { backgroundColor: theme.macroFat }]} />
+                        <Text style={[styles.macroPillLabel, { color: theme.textSecondary }]}>FAT</Text>
                       </View>
-                      <Text style={styles.macroPillVal}>{loggedFat}g / {targetFat}g</Text>
-                      <Text style={styles.macroPillSub}>{fKcal} kcal ({fatPct}%)</Text>
+                      <Text style={[styles.macroPillVal, { color: theme.text }]}>{loggedFat}g / {targetFat}g</Text>
+                      <Text style={[styles.macroPillSub, { color: theme.textMuted }]}>{fKcal} kcal ({fatPct}%)</Text>
                     </View>
                   </View>
                 </>
@@ -249,57 +345,116 @@ export default function ClientInspectionDetailScreen() {
             })()}
 
             {/* Logged Meals List */}
-            <Text style={styles.mealsListHeader}>Logged Meals Today:</Text>
+            <Text style={[styles.mealsListHeader, { color: theme.textSecondary }]}>Logged Meals Today:</Text>
             {sampleLoggedMeals.map((meal, idx) => (
-              <View key={idx} style={styles.mealRow}>
+              <View
+                key={idx}
+                style={[
+                  styles.mealRow,
+                  { backgroundColor: theme.card, borderColor: theme.border },
+                ]}
+              >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.mealTitle}>{meal.title}</Text>
-                  <Text style={styles.mealDesc}>{meal.desc}</Text>
+                  <Text style={[styles.mealTitle, { color: theme.text }]}>{meal.title}</Text>
+                  <Text style={[styles.mealDesc, { color: theme.textMuted }]}>{meal.desc}</Text>
                 </View>
-                <Text style={styles.mealKcal}>{meal.kcal} kcal</Text>
+                <Text
+                  style={[
+                    styles.mealKcal,
+                    { color: theme.isDark ? theme.accentGold : theme.primary },
+                  ]}
+                >
+                  {meal.kcal} kcal
+                </Text>
               </View>
             ))}
           </View>
 
           {/* Today's Workout Breakdown */}
-          <View style={styles.subCard}>
+          <View
+            style={[
+              styles.subCard,
+              { backgroundColor: theme.cardInner, borderColor: theme.border },
+            ]}
+          >
             <View style={styles.workoutHeaderRow}>
-              <Text style={styles.subCardTitle}>🏋️ Today's Workout</Text>
-              <View style={[styles.statusTag, client?.todayWorkoutDone ? styles.statusDone : styles.statusPending]}>
-                <Text style={[styles.statusTagText, client?.todayWorkoutDone ? { color: '#10B981' } : { color: '#F59E0B' }]}>
-                  {client?.todayWorkoutDone ? '✓ Completed' : '⌛ Pending'}
+              <Text
+                style={[
+                  styles.subCardTitle,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                Today's Workout
+              </Text>
+              <View
+                style={[
+                  client?.todayWorkoutDone ? styles.statusDone : styles.statusPending,
+                  {
+                    backgroundColor: client?.todayWorkoutDone
+                      ? theme.isDark
+                        ? theme.badgeBg
+                        : '#E8F5E9'
+                      : theme.isDark
+                      ? '#3B1A08'
+                      : '#FEF3C7',
+                    borderColor: client?.todayWorkoutDone ? theme.success : theme.warning,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusTagText,
+                    { color: client?.todayWorkoutDone ? theme.success : theme.warning },
+                  ]}
+                >
+                  {client?.todayWorkoutDone ? 'Completed' : 'Pending'}
                 </Text>
               </View>
             </View>
 
             {client?.todayWorkoutDone ? (
               <>
-                <Text style={styles.workoutSessionTitle}>{sampleWorkoutDetails.title}</Text>
+                <Text style={[styles.workoutSessionTitle, { color: theme.text }]}>{sampleWorkoutDetails.title}</Text>
 
                 <View style={styles.workoutStatsRow}>
-                  <View style={styles.workoutKpiChip}>
-                    <Text style={styles.workoutKpiVal}>⏱️ {sampleWorkoutDetails.duration}</Text>
-                    <Text style={styles.workoutKpiLabel}>Duration</Text>
+                  <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
+                    <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{sampleWorkoutDetails.duration}</Text>
+                    <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Duration</Text>
                   </View>
-                  <View style={styles.workoutKpiChip}>
-                    <Text style={styles.workoutKpiVal}>⚡ {sampleWorkoutDetails.setsCount} Sets</Text>
-                    <Text style={styles.workoutKpiLabel}>Completed</Text>
+                  <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
+                    <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{sampleWorkoutDetails.setsCount} Sets</Text>
+                    <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Completed</Text>
                   </View>
-                  <View style={styles.workoutKpiChip}>
-                    <Text style={styles.workoutKpiVal}>💪 {sampleWorkoutDetails.volumeKg.toLocaleString()} kg</Text>
-                    <Text style={styles.workoutKpiLabel}>Total Volume</Text>
+                  <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
+                    <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{sampleWorkoutDetails.volumeKg.toLocaleString()} kg</Text>
+                    <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Total Volume</Text>
                   </View>
                 </View>
 
                 <View style={styles.exList}>
                   {sampleWorkoutDetails.exercises.map((ex, exIdx) => (
-                    <View key={exIdx} style={styles.exCard}>
-                      <Text style={styles.exName}>🏋️ {ex.name}</Text>
+                    <View
+                      key={exIdx}
+                      style={[styles.exCard, { backgroundColor: theme.card }]}
+                    >
+                      <Text style={[styles.exName, { color: theme.text }]}>{ex.name}</Text>
                       <View style={styles.setsList}>
                         {ex.sets.map((set, sIdx) => (
-                          <View key={sIdx} style={styles.setRow}>
-                            <Text style={styles.setNum}>Set {set.setNum}</Text>
-                            <Text style={styles.setVal}>{set.weight} kg × {set.reps} reps</Text>
+                          <View
+                            key={sIdx}
+                            style={[styles.setRow, { backgroundColor: theme.cardInner }]}
+                          >
+                            <Text
+                              style={[
+                                styles.setNum,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                            >
+                              Set {set.setNum}
+                            </Text>
+                            <Text style={[styles.setVal, { color: theme.textSecondary }]}>
+                              {set.weight} kg × {set.reps} reps
+                            </Text>
                           </View>
                         ))}
                       </View>
@@ -308,86 +463,187 @@ export default function ClientInspectionDetailScreen() {
                 </View>
               </>
             ) : (
-              <Text style={styles.emptyWorkoutText}>
+              <Text style={[styles.emptyWorkoutText, { color: theme.textMuted }]}>
                 No workout logged yet today. Scheduled routine: "{client?.currentPlanTitle || 'Routine'}".
               </Text>
             )}
           </View>
         </View>
 
-        {/* 2️⃣ SECTION 2: CLIENT PERFORMANCE ANALYTICS (Matches Client Personal Profile) */}
+        {/* SECTION 2: CLIENT PERFORMANCE ANALYTICS */}
         <WeeklyProfileAnalytics />
 
-        {/* 3️⃣ SECTION 3: AUTO-CALCULATED HEALTH METRICS (Matches Client Personal Profile) */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Auto-Calculated Health Metrics</Text>
+        {/* SECTION 3: AUTO-CALCULATED HEALTH METRICS */}
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Auto-Calculated Health Metrics</Text>
 
           <View style={styles.metricsGrid}>
             {/* BMI */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricValue}>{healthStats.bmi}</Text>
-              <Text style={styles.metricName}>Body Mass Index (BMI)</Text>
-              <Text style={styles.metricCategory}>{healthStats.bmiCategory}</Text>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricValue, { color: theme.text }]}>{healthStats.bmi}</Text>
+              <Text style={[styles.metricName, { color: theme.textSecondary }]}>Body Mass Index (BMI)</Text>
+              <Text
+                style={[
+                  styles.metricCategory,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                {healthStats.bmiCategory}
+              </Text>
             </View>
 
             {/* Estimated Body Fat */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricValue}>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricValue, { color: theme.text }]}>
                 {healthStats.estimatedBodyFatPct !== null ? `${healthStats.estimatedBodyFatPct}%` : '16.4%'}
               </Text>
-              <Text style={styles.metricName}>Estimated Body Fat %</Text>
-              <Text style={styles.metricCategory}>U.S. Navy Method</Text>
+              <Text style={[styles.metricName, { color: theme.textSecondary }]}>Estimated Body Fat %</Text>
+              <Text
+                style={[
+                  styles.metricCategory,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                U.S. Navy Method
+              </Text>
             </View>
 
             {/* BMR */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricValue}>{healthStats.bmrKcal}</Text>
-              <Text style={styles.metricName}>BMR (kcal/day)</Text>
-              <Text style={styles.metricCategory}>Mifflin-St Jeor</Text>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricValue, { color: theme.text }]}>{healthStats.bmrKcal}</Text>
+              <Text style={[styles.metricName, { color: theme.textSecondary }]}>BMR (kcal/day)</Text>
+              <Text
+                style={[
+                  styles.metricCategory,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                Mifflin-St Jeor
+              </Text>
             </View>
 
             {/* TDEE */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricValue}>{healthStats.tdeeKcal}</Text>
-              <Text style={styles.metricName}>TDEE Target (kcal)</Text>
-              <Text style={styles.metricCategory}>Daily Expenditure</Text>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricValue, { color: theme.text }]}>{healthStats.tdeeKcal}</Text>
+              <Text style={[styles.metricName, { color: theme.textSecondary }]}>TDEE Target (kcal)</Text>
+              <Text
+                style={[
+                  styles.metricCategory,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                Daily Expenditure
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* 4️⃣ SECTION 4: PERSONAL RECORDS (1RMs) */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Personal Records (1RMs)</Text>
+        {/* SECTION 4: PERSONAL RECORDS (1RMs) */}
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Personal Records (1RMs)</Text>
 
           <View style={styles.prGrid}>
-            <View style={styles.prTile}>
-              <Text style={styles.prExercise}>Bench Press</Text>
-              <Text style={styles.prValue}>
+            <View
+              style={[
+                styles.prTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.prExercise, { color: theme.textSecondary }]}>Bench Press</Text>
+              <Text
+                style={[
+                  styles.prValue,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
                 {personalRecords['ex_01']?.oneRmKg ? `${personalRecords['ex_01'].oneRmKg} kg` : '95.0 kg'}
               </Text>
-              <Text style={styles.prFormula}>Epley 1RM Formula</Text>
+              <Text style={[styles.prFormula, { color: theme.textMuted }]}>Epley 1RM Formula</Text>
             </View>
 
-            <View style={styles.prTile}>
-              <Text style={styles.prExercise}>Back Squat</Text>
-              <Text style={styles.prValue}>
+            <View
+              style={[
+                styles.prTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.prExercise, { color: theme.textSecondary }]}>Back Squat</Text>
+              <Text
+                style={[
+                  styles.prValue,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
                 {personalRecords['ex_07']?.oneRmKg ? `${personalRecords['ex_07'].oneRmKg} kg` : '128.3 kg'}
               </Text>
-              <Text style={styles.prFormula}>Epley 1RM Formula</Text>
+              <Text style={[styles.prFormula, { color: theme.textMuted }]}>Epley 1RM Formula</Text>
             </View>
           </View>
         </View>
 
-        {/* 5️⃣ SECTION 5: TRANSFORMATION PHOTO CHECK-INS */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Transformation Photo Check-ins</Text>
+        {/* SECTION 5: TRANSFORMATION PHOTO CHECK-INS */}
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Transformation Photo Check-ins</Text>
 
           {checkinPhotos.length === 0 ? (
-            <Text style={styles.emptyPhotoText}>No transformation photos uploaded yet.</Text>
+            <Text style={[styles.emptyPhotoText, { color: theme.textMuted }]}>No transformation photos uploaded yet.</Text>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
               {checkinPhotos.map((photo) => (
-                <View key={photo.id} style={styles.photoCard}>
+                <View
+                  key={photo.id}
+                  style={[
+                    styles.photoCard,
+                    { backgroundColor: theme.cardInner, borderColor: theme.border },
+                  ]}
+                >
                   <View style={{ position: 'relative' }}>
                     <Image source={{ uri: photo.photoUrl }} style={styles.photoImg} />
                     <TouchableOpacity
@@ -404,10 +660,10 @@ export default function ClientInspectionDetailScreen() {
                       }}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.deletePhotoBadgeText}>🗑️</Text>
+                      <Ionicons name="trash-outline" size={14} color={theme.danger} />
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.photoDate}>
+                  <Text style={[styles.photoDate, { color: theme.textSecondary }]}>
                     {new Date(photo.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                   </Text>
                 </View>
@@ -416,13 +672,16 @@ export default function ClientInspectionDetailScreen() {
           )}
         </View>
 
-        {/* 🗑️ UNLINK CLIENT BUTTON */}
+        {/* UNLINK CLIENT BUTTON */}
         <TouchableOpacity style={styles.unlinkBtn} onPress={handleUnlink} activeOpacity={0.8}>
-          <Text style={styles.unlinkBtnText}>🗑️ Unlink Client from Roster</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Ionicons name="trash-outline" size={16} color={theme.danger} />
+            <Text style={styles.unlinkBtnText}>Unlink Client from Roster</Text>
+          </View>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* 🎯 EDIT TARGET MODAL */}
+      {/* EDIT TARGET MODAL */}
       <Modal
         visible={editModalVisible}
         animationType="slide"
@@ -430,29 +689,69 @@ export default function ClientInspectionDetailScreen() {
         onRequestClose={() => setEditModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Targets: {client?.fullName}</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Targets: {client?.fullName}</Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Daily Calorie Target (kcal):</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Daily Calorie Target (kcal):</Text>
             <TextInput
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
               value={targetCaloriesInput}
               keyboardType="numeric"
               onChangeText={setTargetCaloriesInput}
             />
 
             <View style={styles.modalActionRow}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditModalVisible(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
+              <TouchableOpacity
+                style={[
+                  styles.modalCancelBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveTargets}>
-                <Text style={styles.modalSaveText}>Save Targets 🎯</Text>
+              <TouchableOpacity
+                style={[
+                  styles.modalSaveBtn,
+                  {
+                    backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+                onPress={handleSaveTargets}
+              >
+                <Text
+                  style={[
+                    styles.modalSaveText,
+                    { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                  ]}
+                >
+                  Save Targets
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -465,7 +764,6 @@ export default function ClientInspectionDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 20,
@@ -480,50 +778,39 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#064E3B',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   headerAvatarText: {
-    color: '#10B981',
     fontWeight: 'bold',
     fontSize: 16,
   },
   clientName: {
-    color: '#F8FAFC',
     fontSize: 18,
     fontWeight: 'bold',
   },
   badgeSuccess: {
-    backgroundColor: '#064E3B',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   badgeSuccessText: {
-    color: '#10B981',
     fontSize: 9,
     fontWeight: 'bold',
   },
   badgeAlert: {
-    backgroundColor: '#451A03',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#F59E0B',
   },
   badgeAlertText: {
-    color: '#F59E0B',
     fontSize: 9,
     fontWeight: 'bold',
   },
   headerSubText: {
-    color: '#94A3B8',
     fontSize: 11.5,
     marginTop: 2,
   },
@@ -531,41 +818,33 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E293B',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#CBD5E1',
     fontSize: 16,
     fontWeight: 'bold',
   },
   scrollContent: {
     flex: 1,
   },
-
   sectionCard: {
-    backgroundColor: '#091512',
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#10B98133',
   },
   sectionTitle: {
-    color: '#F8FAFC',
     fontSize: 15,
     fontWeight: 'bold',
     marginBottom: 14,
   },
-
   subCard: {
-    backgroundColor: '#0C1E19',
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   nutritionCardHeaderRow: {
     flexDirection: 'row',
@@ -574,37 +853,31 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   subCardTitle: {
-    color: '#A7F3D0',
     fontSize: 13.5,
     fontWeight: 'bold',
   },
   subCardBadge: {
-    color: '#94A3B8',
     fontSize: 10.5,
     marginTop: 2,
   },
   btnEditTargets: {
-    backgroundColor: '#0F172A',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   btnEditTargetsText: {
-    color: '#10B981',
     fontSize: 11,
     fontWeight: 'bold',
   },
-
   segmentedProgressBarTrack: {
     flexDirection: 'row',
     height: 12,
-    backgroundColor: '#1E293B',
     borderRadius: 6,
     overflow: 'hidden',
     marginTop: 8,
     marginBottom: 12,
+    borderWidth: 1,
     gap: 2,
   },
   segmentedFill: {
@@ -622,11 +895,9 @@ const styles = StyleSheet.create({
   },
   macroPillCard: {
     flex: 1,
-    backgroundColor: '#06110D',
     borderRadius: 10,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   macroPillHeader: {
     flexDirection: 'row',
@@ -640,50 +911,20 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   macroPillLabel: {
-    color: '#94A3B8',
     fontSize: 8.5,
     fontWeight: 'bold',
     letterSpacing: 0.5,
   },
   macroPillVal: {
-    color: '#F8FAFC',
     fontSize: 11,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
   macroPillSub: {
-    color: '#64748B',
     fontSize: 8.5,
     marginTop: 2,
   },
-  macroHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 3,
-  },
-  macroName: {
-    color: '#CBD5E1',
-    fontSize: 11.5,
-  },
-  macroValText: {
-    color: '#F8FAFC',
-    fontSize: 11.5,
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
-  },
-  progressTrack: {
-    height: 5,
-    backgroundColor: '#0F172A',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-
   mealsListHeader: {
-    color: '#94A3B8',
     fontSize: 11,
     fontWeight: 'bold',
     marginTop: 8,
@@ -693,53 +934,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
     padding: 8,
     borderRadius: 8,
+    borderWidth: 1,
     marginBottom: 6,
   },
   mealTitle: {
-    color: '#F8FAFC',
     fontSize: 11.5,
     fontWeight: 'bold',
   },
   mealDesc: {
-    color: '#64748B',
     fontSize: 10,
   },
   mealKcal: {
-    color: '#10B981',
     fontSize: 11,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
-
   workoutHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
-  statusTag: {
+  statusDone: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
   },
-  statusDone: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
-  },
   statusPending: {
-    backgroundColor: '#451A03',
-    borderColor: '#F59E0B',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
   },
   statusTagText: {
     fontSize: 10,
     fontWeight: 'bold',
   },
   workoutSessionTitle: {
-    color: '#F8FAFC',
     fontSize: 13,
     fontWeight: 'bold',
     marginBottom: 8,
@@ -751,31 +985,25 @@ const styles = StyleSheet.create({
   },
   workoutKpiChip: {
     flex: 1,
-    backgroundColor: '#0F172A',
     borderRadius: 8,
     padding: 6,
     alignItems: 'center',
   },
   workoutKpiVal: {
-    color: '#F8FAFC',
     fontSize: 11,
     fontWeight: 'bold',
   },
   workoutKpiLabel: {
-    color: '#64748B',
     fontSize: 9,
   },
-
   exList: {
     gap: 6,
   },
   exCard: {
-    backgroundColor: '#0F172A',
     borderRadius: 8,
     padding: 8,
   },
   exName: {
-    color: '#F8FAFC',
     fontSize: 11.5,
     fontWeight: 'bold',
     marginBottom: 4,
@@ -786,7 +1014,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   setRow: {
-    backgroundColor: '#1E293B',
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 4,
@@ -794,21 +1021,16 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   setNum: {
-    color: '#10B981',
     fontSize: 10,
     fontWeight: 'bold',
   },
   setVal: {
-    color: '#CBD5E1',
     fontSize: 10,
   },
   emptyWorkoutText: {
-    color: '#64748B',
     fontSize: 11.5,
     fontStyle: 'italic',
   },
-
-  /* HEALTH METRICS STYLES */
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -816,59 +1038,44 @@ const styles = StyleSheet.create({
   },
   metricTile: {
     width: '48%',
-    backgroundColor: '#0C1E19',
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   metricValue: {
-    color: '#F8FAFC',
     fontSize: 20,
     fontWeight: 'bold',
   },
   metricName: {
-    color: '#CBD5E1',
     fontSize: 11.5,
     fontWeight: '600',
     marginTop: 2,
   },
   metricCategory: {
-    color: '#10B981',
     fontSize: 10.5,
     marginTop: 2,
   },
-
-  /* PR STYLES */
   prGrid: {
     gap: 10,
   },
   prTile: {
-    backgroundColor: '#0C1E19',
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   prExercise: {
-    color: '#CBD5E1',
     fontSize: 12,
     fontWeight: '600',
   },
   prValue: {
-    color: '#F8FAFC',
     fontSize: 22,
     fontWeight: 'bold',
     marginVertical: 2,
   },
   prFormula: {
-    color: '#64748B',
     fontSize: 10.5,
   },
-
-  /* PHOTO CHECKIN STYLES */
   emptyPhotoText: {
-    color: '#64748B',
     fontSize: 12,
     fontStyle: 'italic',
     textAlign: 'center',
@@ -881,9 +1088,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#0C1E19',
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   photoImg: {
     width: 100,
@@ -907,14 +1112,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   photoDate: {
-    color: '#94A3B8',
     fontSize: 10,
     textAlign: 'center',
     paddingVertical: 4,
   },
-
   unlinkBtn: {
-    backgroundColor: '#451A03',
+    backgroundColor: '#3B1A08',
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
@@ -928,8 +1131,6 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: 'bold',
   },
-
-  /* EDIT TARGET MODAL */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -937,11 +1138,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modalContent: {
-    backgroundColor: '#0F172A',
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#10B98133',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -950,23 +1149,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
   },
   modalCloseText: {
-    color: '#94A3B8',
     fontSize: 16,
     fontWeight: 'bold',
   },
   inputLabel: {
-    color: '#94A3B8',
     fontSize: 12,
     marginBottom: 6,
   },
   modalInput: {
-    backgroundColor: '#1E293B',
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
     fontFamily: 'monospace',
@@ -974,7 +1168,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
     marginBottom: 20,
   },
   modalActionRow: {
@@ -983,25 +1176,22 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    backgroundColor: '#1E293B',
     paddingVertical: 10,
     borderRadius: 10,
+    borderWidth: 1,
     alignItems: 'center',
   },
   modalCancelText: {
-    color: '#94A3B8',
     fontSize: 13,
     fontWeight: 'bold',
   },
   modalSaveBtn: {
     flex: 1.5,
-    backgroundColor: '#10B981',
     paddingVertical: 10,
     borderRadius: 10,
     alignItems: 'center',
   },
   modalSaveText: {
-    color: '#064E3B',
     fontSize: 13,
     fontWeight: 'bold',
   },

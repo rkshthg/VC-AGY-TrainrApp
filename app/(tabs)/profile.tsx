@@ -10,26 +10,32 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { HeaderBar } from '../../components/HeaderBar';
 import { SettingsDrawer } from '../../components/SettingsDrawer';
 import { CalendarLogModal } from '../../components/CalendarLogModal';
 import { WeeklyProfileAnalytics } from '../../components/WeeklyProfileAnalytics';
 import { useAuthStore } from '../../store/authStore';
-import { useProgressStore } from '../../store/progressStore';
+import { useProgressStore, CheckinPhoto } from '../../store/progressStore';
 import { useWorkoutStore } from '../../store/workoutStore';
 import { useTrainerStore } from '../../store/trainerStore';
+import { useTheme } from '../../lib/theme';
 
 export default function ProfileScreen() {
   const { profile, role, trainerCode, setProfile } = useAuthStore();
+  const theme = useTheme();
   const {
     weightHistory,
     checkinPhotos,
+    checkinLogs,
     latestMeasurements,
     getCalculatedMetrics,
     addWeightLog,
     updateMeasurements,
     addCheckinPhoto,
     deleteCheckinPhoto,
+    addCheckinLog,
+    deleteCheckinLog,
   } = useProgressStore();
   const personalRecords = useWorkoutStore((state) => state.personalRecords);
   const addLiveFeedEvent = useTrainerStore((state) => state.addLiveFeedEvent);
@@ -37,6 +43,14 @@ export default function ProfileScreen() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
+  const [viewingPhoto, setViewingPhoto] = useState<CheckinPhoto | null>(null);
+  const [expandedTimelineIds, setExpandedTimelineIds] = useState<string[]>(['PHOTO_pic_1']);
+
+  const toggleTimelineExpand = (id: string) => {
+    setExpandedTimelineIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
   const avatarPresets = [
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
@@ -113,12 +127,6 @@ export default function ProfileScreen() {
     const parsedThighsR = parseFloat(thighsRInput);
 
     const updatedSummaryList: string[] = [];
-
-    if (!isNaN(parsedWeight) && parsedWeight > 0) {
-      addWeightLog(parsedWeight);
-      updatedSummaryList.push(`${parsedWeight} kg`);
-    }
-
     const measurementsToUpdate: Record<string, number> = {};
     if (!isNaN(parsedNeck) && parsedNeck > 0) measurementsToUpdate.neckCm = parsedNeck;
     if (!isNaN(parsedWaist) && parsedWaist > 0) measurementsToUpdate.waistCm = parsedWaist;
@@ -128,6 +136,19 @@ export default function ProfileScreen() {
     if (!isNaN(parsedBicepsR) && parsedBicepsR > 0) measurementsToUpdate.bicepsRCm = parsedBicepsR;
     if (!isNaN(parsedThighsL) && parsedThighsL > 0) measurementsToUpdate.thighsLCm = parsedThighsL;
     if (!isNaN(parsedThighsR) && parsedThighsR > 0) measurementsToUpdate.thighsRCm = parsedThighsR;
+
+    // Log complete check-in entry with all updated fields
+    addCheckinLog({
+      weightKg: !isNaN(parsedWeight) && parsedWeight > 0 ? parsedWeight : undefined,
+      heightCm: !isNaN(parsedHeight) && parsedHeight > 0 ? parsedHeight : undefined,
+      photoUrl: uploadedPhotos.length > 0 ? uploadedPhotos[0] : undefined,
+      measurements: Object.keys(measurementsToUpdate).length > 0 ? measurementsToUpdate : undefined,
+    });
+
+    if (!isNaN(parsedWeight) && parsedWeight > 0) {
+      addWeightLog(parsedWeight);
+      updatedSummaryList.push(`${parsedWeight} kg`);
+    }
 
     if (Object.keys(measurementsToUpdate).length > 0) {
       updateMeasurements(measurementsToUpdate);
@@ -149,21 +170,55 @@ export default function ProfileScreen() {
       updatedSummaryList.push(`${uploadedPhotos.length} Photo(s)`);
     }
 
-    const summaryText = updatedSummaryList.length > 0
-      ? updatedSummaryList.join(' & ')
-      : `${weightHistory[0]?.weightKg || 76.4} kg Retained`;
+    // Collect updated values for Trainer live feed activity card
+    const liveFeedUpdatedValues: { label: string; value: string }[] = [];
+    if (!isNaN(parsedWeight) && parsedWeight > 0) {
+      liveFeedUpdatedValues.push({ label: 'Body Weight', value: `${parsedWeight} kg` });
+    }
+    if (!isNaN(parsedHeight) && parsedHeight > 0) {
+      liveFeedUpdatedValues.push({ label: 'Height', value: `${parsedHeight} cm` });
+    }
+    if (measurementsToUpdate.bicepsLCm) {
+      liveFeedUpdatedValues.push({ label: 'Biceps L', value: `${measurementsToUpdate.bicepsLCm} cm` });
+    }
+    if (measurementsToUpdate.bicepsRCm) {
+      liveFeedUpdatedValues.push({ label: 'Biceps R', value: `${measurementsToUpdate.bicepsRCm} cm` });
+    }
+    if (measurementsToUpdate.neckCm) {
+      liveFeedUpdatedValues.push({ label: 'Neck', value: `${measurementsToUpdate.neckCm} cm` });
+    }
+    if (measurementsToUpdate.chestCm) {
+      liveFeedUpdatedValues.push({ label: 'Chest', value: `${measurementsToUpdate.chestCm} cm` });
+    }
+    if (measurementsToUpdate.waistCm) {
+      liveFeedUpdatedValues.push({ label: 'Waist', value: `${measurementsToUpdate.waistCm} cm` });
+    }
+    if (measurementsToUpdate.hipsCm) {
+      liveFeedUpdatedValues.push({ label: 'Hips', value: `${measurementsToUpdate.hipsCm} cm` });
+    }
+    if (measurementsToUpdate.thighsLCm) {
+      liveFeedUpdatedValues.push({ label: 'Thighs L', value: `${measurementsToUpdate.thighsLCm} cm` });
+    }
+    if (measurementsToUpdate.thighsRCm) {
+      liveFeedUpdatedValues.push({ label: 'Thighs R', value: `${measurementsToUpdate.thighsRCm} cm` });
+    }
+    if (uploadedPhotos.length > 0) {
+      liveFeedUpdatedValues.push({ label: 'Photo Upload', value: 'Transformation Photo Attached' });
+    }
 
     addLiveFeedEvent({
       clientId: profile?.id || 'usr_1',
       clientName: profile?.fullName || 'Client',
       eventType: 'UPLOAD_CHECKIN',
       timeAgo: 'Just now',
-      actionVerb: 'Logged',
-      targetTitle: `Transformation Check-In (${summaryText})`,
+      actionVerb: 'logged',
+      targetTitle: 'Transformation Check-In',
       tags: [
         { label: 'Check-In', type: 'success' },
-        { label: 'Metrics Updated', type: 'success' },
+        { label: 'Transformation', type: 'success' },
       ],
+      photoUrl: uploadedPhotos.length > 0 ? uploadedPhotos[0] : undefined,
+      updatedValues: liveFeedUpdatedValues.length > 0 ? liveFeedUpdatedValues : [{ label: 'Check-In Update', value: 'Transformation Logged' }],
       timestamp: new Date().toISOString(),
     });
 
@@ -187,64 +242,126 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* 👤 COMPACT HORIZONTAL PROFILE HEADER */}
-        <View style={styles.profileHeaderCard}>
+        <View
+          style={[
+            styles.profileHeaderCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
           {/* Avatar (Tappable to change profile picture) */}
           <TouchableOpacity
-            style={styles.avatarGoldBorder}
+            style={[
+              styles.avatarGoldBorder,
+              {
+                borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                backgroundColor: theme.cardInner,
+              },
+            ]}
             onPress={() => setAvatarModalVisible(true)}
             activeOpacity={0.8}
           >
             {profile?.avatarUrl ? (
               <Image source={{ uri: profile.avatarUrl }} style={styles.centeredAvatarImg} />
             ) : (
-              <View style={styles.centeredAvatarPlaceholder}>
-                <Text style={styles.centeredAvatarText}>
+              <View
+                style={[
+                  styles.centeredAvatarPlaceholder,
+                  { backgroundColor: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.centeredAvatarText,
+                    { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                  ]}
+                >
                   {(profile?.fullName || 'U').charAt(0).toUpperCase()}
                 </Text>
               </View>
             )}
-            <View style={styles.avatarEditBadge}>
-              <Text style={{ fontSize: 13 }}>📷</Text>
+            <View
+              style={[
+                styles.avatarEditBadge,
+                {
+                  backgroundColor: theme.cardInner,
+                  borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                },
+              ]}
+            >
+              <Ionicons name="camera-outline" size={13} color={theme.text} />
             </View>
           </TouchableOpacity>
 
           {/* Identity Info */}
           <View style={styles.profileHeaderInfo}>
-            <Text style={styles.heroNameText}>{profile?.fullName || 'Alex Rivers'}</Text>
-            <Text style={styles.heroSubText}>
+            <Text style={[styles.heroNameText, { color: theme.text }]}>{profile?.fullName || 'Alex Rivers'}</Text>
+            <Text style={[styles.heroSubText, { color: theme.textSecondary }]}>
               {role === 'TRAINER' ? 'Elite Conditioning Specialist' : 'Fitness Enthusiast'}
             </Text>
 
             {/* Trainer Code Chip (Trainer Account) */}
             {role === 'TRAINER' && (
-              <View style={styles.trainerCodeChip}>
+              <View
+                style={[
+                  styles.trainerCodeChip,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.borderGold,
+                  },
+                ]}
+              >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.trainerCodeChipLabel}>YOUR TRAINER CODE</Text>
-                  <Text style={styles.trainerCodeChipVal}>Code: {trainerCode || 'TRN-882'}</Text>
+                  <Text style={[styles.trainerCodeChipLabel, { color: theme.accentGold }]}>YOUR TRAINER CODE</Text>
+                  <Text style={[styles.trainerCodeChipVal, { color: theme.text }]}>Code: {trainerCode || 'TRN-882'}</Text>
                 </View>
                 <TouchableOpacity
-                  style={styles.trainerCodeCopyBtn}
+                  style={[
+                    styles.trainerCodeCopyBtn,
+                    {
+                      backgroundColor: theme.cardAlt,
+                      borderColor: theme.borderGold,
+                    },
+                  ]}
                   onPress={() => {
                     Alert.alert('Copied!', `Trainer code "${trainerCode || 'TRN-882'}" copied to clipboard.`);
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={{ fontSize: 12 }}>📋</Text>
+                  <Ionicons name="copy-outline" size={13} color={theme.accentGold} />
                 </TouchableOpacity>
               </View>
             )}
 
             {/* Linked Trainer Chip */}
-            <View style={styles.linkedTrainerChip}>
+            <View
+              style={[
+                styles.linkedTrainerChip,
+                {
+                  backgroundColor: theme.cardInner,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
               <View style={{ flex: 1 }}>
-                <Text style={styles.linkedTrainerChipLabel}>LINKED TRAINER</Text>
-                <Text style={styles.linkedTrainerChipName}>Coach Marcus Vance</Text>
-                <Text style={styles.linkedTrainerChipCode}>Code: MV-7X21</Text>
+                <Text
+                  style={[
+                    styles.linkedTrainerChipLabel,
+                    { color: theme.isDark ? theme.accentGold : theme.primary },
+                  ]}
+                >
+                  LINKED TRAINER
+                </Text>
+                <Text style={[styles.linkedTrainerChipName, { color: theme.text }]}>Coach Marcus Vance</Text>
+                <Text style={[styles.linkedTrainerChipCode, { color: theme.textMuted }]}>Code: MV-7X21</Text>
               </View>
               <TouchableOpacity
                 style={styles.unlinkTrainerBtn}
@@ -260,7 +377,7 @@ export default function ProfileScreen() {
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.unlinkTrainerBtnText}>✕</Text>
+                <Ionicons name="close-outline" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -269,19 +386,46 @@ export default function ProfileScreen() {
         {/* ACTION PILL ROW */}
         <View style={styles.actionPillRow}>
           <TouchableOpacity
-            style={styles.calendarPillBtn}
+            style={[
+              styles.calendarPillBtn,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                ...theme.shadowButton,
+              },
+            ]}
             onPress={() => setCalendarModalVisible(true)}
             activeOpacity={0.8}
           >
-            <Text style={styles.calendarPillText}>Log Calendar</Text>
+            <Text
+              style={[
+                styles.calendarPillText,
+                { color: theme.isDark ? theme.accentGold : theme.primary },
+              ]}
+            >
+              Log Calendar
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.checkinPillBtn}
+            style={[
+              styles.checkinPillBtn,
+              {
+                backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                ...theme.shadowButton,
+              },
+            ]}
             onPress={() => setCheckinModalVisible(true)}
             activeOpacity={0.8}
           >
-            <Text style={styles.checkinPillText}>Check-In</Text>
+            <Text
+              style={[
+                styles.checkinPillText,
+                { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+              ]}
+            >
+              Check-In
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -289,274 +433,584 @@ export default function ProfileScreen() {
         <WeeklyProfileAnalytics />
 
         {/* 🩺 HEALTH METRICS 2X2 GRID */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Health Metrics</Text>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Health Metrics</Text>
 
           <View style={styles.metricsGrid}>
             {/* BMI */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>BMI</Text>
-              <Text style={styles.metricVal}>{stats.bmi}</Text>
-              <Text style={styles.metricSub}>{stats.bmiCategory}</Text>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricLabel, { color: theme.accentGold }]}>BMI</Text>
+              <Text style={[styles.metricVal, { color: theme.text }]}>{stats.bmi}</Text>
+              <Text style={[styles.metricSub, { color: theme.textSecondary }]}>{stats.bmiCategory}</Text>
             </View>
 
             {/* BODY FAT % */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>BODY FAT %</Text>
-              <Text style={styles.metricVal}>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricLabel, { color: theme.accentGold }]}>BODY FAT %</Text>
+              <Text style={[styles.metricVal, { color: theme.text }]}>
                 {stats.estimatedBodyFatPct ? `${stats.estimatedBodyFatPct}%` : '12%'}
               </Text>
-              <Text style={styles.metricSub}>U.S. Navy Method</Text>
+              <Text style={[styles.metricSub, { color: theme.textSecondary }]}>U.S. Navy Method</Text>
             </View>
 
             {/* BMR */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>BMR</Text>
-              <Text style={styles.metricVal}>{stats.bmrKcal}</Text>
-              <Text style={styles.metricSub}>kcal/day</Text>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricLabel, { color: theme.accentGold }]}>BMR</Text>
+              <Text style={[styles.metricVal, { color: theme.text }]}>{stats.bmrKcal}</Text>
+              <Text style={[styles.metricSub, { color: theme.textSecondary }]}>kcal/day</Text>
             </View>
 
             {/* TDEE TARGET */}
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>TDEE TARGET</Text>
-              <Text style={styles.metricVal}>{stats.tdeeKcal}</Text>
-              <Text style={styles.metricSub}>Maintenance</Text>
+            <View
+              style={[
+                styles.metricTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.metricLabel, { color: theme.accentGold }]}>TDEE TARGET</Text>
+              <Text style={[styles.metricVal, { color: theme.text }]}>{stats.tdeeKcal}</Text>
+              <Text style={[styles.metricSub, { color: theme.textSecondary }]}>Maintenance</Text>
             </View>
           </View>
         </View>
 
         {/* 📏 MEASUREMENTS SECTION (2-COLUMN GRID) */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Measurements</Text>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Measurements</Text>
 
           <View style={styles.measurementsGrid}>
             {/* Height */}
-            <View style={styles.measureTile}>
+            <View
+              style={[
+                styles.measureTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
               <View style={styles.measureTileHeader}>
-                <Text style={styles.measureTileIcon}>↨</Text>
-                <Text style={styles.measureTileLabel}>HEIGHT</Text>
+                <Ionicons name="resize-outline" size={14} color={theme.textSecondary} />
+                <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>HEIGHT</Text>
               </View>
-              <Text style={styles.measureTileVal}>{profile?.heightCm || 185} <Text style={styles.measureTileUnit}>cm</Text></Text>
+              <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                {profile?.heightCm || 185} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+              </Text>
             </View>
 
             {/* Weight */}
-            <View style={styles.measureTile}>
+            <View
+              style={[
+                styles.measureTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
               <View style={styles.measureTileHeader}>
-                <Text style={styles.measureTileIcon}>⚖️</Text>
-                <Text style={styles.measureTileLabel}>WEIGHT</Text>
+                <Ionicons name="scale-outline" size={14} color={theme.textSecondary} />
+                <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>WEIGHT</Text>
               </View>
-              <Text style={styles.measureTileVal}>{weightHistory[0]?.weightKg || 92} <Text style={styles.measureTileUnit}>kg</Text></Text>
+              <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                {weightHistory[0]?.weightKg || 92} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+              </Text>
             </View>
 
             {/* Neck */}
             {latestMeasurements?.neckCm ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>📏</Text>
-                  <Text style={styles.measureTileLabel}>NECK</Text>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>NECK</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements.neckCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements.neckCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
 
             {/* Chest */}
             {latestMeasurements?.chestCm ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>📏</Text>
-                  <Text style={styles.measureTileLabel}>CHEST</Text>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>CHEST</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements.chestCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements.chestCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
 
             {/* Waist */}
             {latestMeasurements?.waistCm ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>📏</Text>
-                  <Text style={styles.measureTileLabel}>WAIST</Text>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>WAIST</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements.waistCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements.waistCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
 
             {/* Hips */}
             {latestMeasurements?.hipsCm ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>📏</Text>
-                  <Text style={styles.measureTileLabel}>HIPS</Text>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>HIPS</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements.hipsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements.hipsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
 
             {/* Biceps L */}
             {(latestMeasurements?.bicepsLCm || latestMeasurements?.bicepsCm) ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>💪</Text>
-                  <Text style={styles.measureTileLabel}>BICEPS (L)</Text>
+                  <Ionicons name="fitness-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>BICEPS (L)</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements?.bicepsLCm || latestMeasurements?.bicepsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements?.bicepsLCm || latestMeasurements?.bicepsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
 
             {/* Biceps R */}
             {(latestMeasurements?.bicepsRCm || latestMeasurements?.bicepsCm) ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>💪</Text>
-                  <Text style={styles.measureTileLabel}>BICEPS (R)</Text>
+                  <Ionicons name="fitness-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>BICEPS (R)</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements?.bicepsRCm || latestMeasurements?.bicepsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements?.bicepsRCm || latestMeasurements?.bicepsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
 
             {/* Thighs L */}
             {(latestMeasurements?.thighsLCm || latestMeasurements?.thighsCm) ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>🦵</Text>
-                  <Text style={styles.measureTileLabel}>THIGHS (L)</Text>
+                  <Ionicons name="walk-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>THIGHS (L)</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements?.thighsLCm || latestMeasurements?.thighsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements?.thighsLCm || latestMeasurements?.thighsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
 
             {/* Thighs R */}
             {(latestMeasurements?.thighsRCm || latestMeasurements?.thighsCm) ? (
-              <View style={styles.measureTile}>
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
                 <View style={styles.measureTileHeader}>
-                  <Text style={styles.measureTileIcon}>🦵</Text>
-                  <Text style={styles.measureTileLabel}>THIGHS (R)</Text>
+                  <Ionicons name="walk-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>THIGHS (R)</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements?.thighsRCm || latestMeasurements?.thighsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {latestMeasurements?.thighsRCm || latestMeasurements?.thighsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                </Text>
               </View>
             ) : null}
           </View>
         </View>
 
-        {/* 🏋️ PERSONAL RECORDS — KPI CARDS */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Personal Records</Text>
+        {/* PERSONAL RECORDS — KPI CARDS */}
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Personal Records</Text>
 
           <View style={styles.prGrid}>
             {/* Bench Press */}
-            <View style={styles.prKpiCard}>
-              <View style={styles.prKpiIconWrap}>
-                <Text style={styles.prKpiIcon}>🏋️</Text>
+            <View
+              style={[
+                styles.prKpiCard,
+                { backgroundColor: theme.cardInner, borderColor: theme.borderGold },
+              ]}
+            >
+              <View style={[styles.prKpiIconWrap, { backgroundColor: theme.isDark ? '#3B1A08' : '#FEF3C7' }]}>
+                <Ionicons name="barbell-outline" size={16} color={theme.accentGold} />
               </View>
-              <Text style={styles.prKpiLabel}>BENCH PRESS</Text>
-              <Text style={styles.prKpiValue}>
+              <Text style={[styles.prKpiLabel, { color: theme.textSecondary }]}>BENCH PRESS</Text>
+              <Text style={[styles.prKpiValue, { color: theme.accentGold }]}>
                 {personalRecords['ex_01']?.oneRmKg ? `${personalRecords['ex_01'].oneRmKg}` : '100'}
               </Text>
-              <Text style={styles.prKpiUnit}>kg · 1RM</Text>
+              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>kg · 1RM</Text>
             </View>
 
             {/* Squat */}
-            <View style={styles.prKpiCard}>
-              <View style={styles.prKpiIconWrap}>
-                <Text style={styles.prKpiIcon}>🦵</Text>
+            <View
+              style={[
+                styles.prKpiCard,
+                { backgroundColor: theme.cardInner, borderColor: theme.borderGold },
+              ]}
+            >
+              <View style={[styles.prKpiIconWrap, { backgroundColor: theme.isDark ? '#3B1A08' : '#FEF3C7' }]}>
+                <Ionicons name="walk-outline" size={16} color={theme.accentGold} />
               </View>
-              <Text style={styles.prKpiLabel}>SQUAT</Text>
-              <Text style={styles.prKpiValue}>
+              <Text style={[styles.prKpiLabel, { color: theme.textSecondary }]}>SQUAT</Text>
+              <Text style={[styles.prKpiValue, { color: theme.accentGold }]}>
                 {personalRecords['ex_07']?.oneRmKg ? `${personalRecords['ex_07'].oneRmKg}` : '140'}
               </Text>
-              <Text style={styles.prKpiUnit}>kg · 1RM</Text>
+              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>kg · 1RM</Text>
             </View>
 
             {/* Deadlift */}
-            <View style={styles.prKpiCard}>
-              <View style={styles.prKpiIconWrap}>
-                <Text style={styles.prKpiIcon}>💀</Text>
+            <View
+              style={[
+                styles.prKpiCard,
+                { backgroundColor: theme.cardInner, borderColor: theme.borderGold },
+              ]}
+            >
+              <View style={[styles.prKpiIconWrap, { backgroundColor: theme.isDark ? '#3B1A08' : '#FEF3C7' }]}>
+                <Ionicons name="fitness-outline" size={16} color={theme.accentGold} />
               </View>
-              <Text style={styles.prKpiLabel}>DEADLIFT</Text>
-              <Text style={styles.prKpiValue}>
+              <Text style={[styles.prKpiLabel, { color: theme.textSecondary }]}>DEADLIFT</Text>
+              <Text style={[styles.prKpiValue, { color: theme.accentGold }]}>
                 {personalRecords['ex_08']?.oneRmKg ? `${personalRecords['ex_08'].oneRmKg}` : '180'}
               </Text>
-              <Text style={styles.prKpiUnit}>kg · 1RM</Text>
+              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>kg · 1RM</Text>
             </View>
           </View>
         </View>
 
-        {/* 📖 CHECK-IN JOURNAL (VERTICAL TIMELINE LAYOUT) */}
-        <View style={styles.sectionCard}>
-          <View style={styles.journalHeaderRow}>
-            <Text style={styles.sectionTitle}>Check-In Journal</Text>
-            <TouchableOpacity
-              style={styles.addCheckinGoldBtn}
-              onPress={() => setCheckinModalVisible(true)}
-              activeOpacity={0.8}
+        {/* CHECK-IN JOURNAL (VERTICAL TIMELINE LAYOUT MATCHING DESIGN) */}
+        {(() => {
+          const sortedLogs = [...checkinLogs].sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+          );
+
+          return (
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
             >
-              <Text style={styles.addCheckinGoldBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Vertical Timeline */}
-          <View style={styles.timelineContainer}>
-            <View style={styles.verticalTimelineLine} />
-
-            {/* Photo Check-in Items */}
-            {checkinPhotos.map((photo, idx) => (
-              <View key={photo.id} style={styles.timelineRow}>
-                <View style={styles.timelineNode}>
-                  <Text style={styles.timelineNodeIcon}>📷</Text>
-                </View>
-
-                <View style={styles.timelineCard}>
-                  <Image source={{ uri: photo.photoUrl }} style={styles.timelineCardImg} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.timelineDateText}>
-                      {new Date(photo.date).toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase()}
-                    </Text>
-                    <Text style={styles.timelineSubText}>Photo Update</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.timelineDeleteBtn}
-                    onPress={() => {
-                      Alert.alert(
-                        'Delete Check-In Photo',
-                        'Are you sure you want to remove this photo?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Delete', style: 'destructive', onPress: () => deleteCheckinPhoto(photo.id) },
-                        ]
-                      );
-                    }}
-                  >
-                    <Text style={{ fontSize: 12 }}>🗑️</Text>
-                  </TouchableOpacity>
-                </View>
+              <View style={styles.journalHeaderRow}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Check-In Journal</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.addCheckinGoldBtn,
+                    { backgroundColor: theme.isDark ? theme.accentGold : theme.primary },
+                  ]}
+                  onPress={() => setCheckinModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={20} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
+                </TouchableOpacity>
               </View>
-            ))}
 
-            {/* Weight Check-in Timeline Items */}
-            {weightHistory.slice(0, 3).map((wLog, idx) => (
-              <View key={wLog.id} style={styles.timelineRow}>
-                <View style={styles.timelineNode}>
-                  <Text style={styles.timelineNodeIcon}>🔲</Text>
-                </View>
+              {/* Vertical Timeline */}
+              <View style={styles.timelineContainer}>
+                <View style={[styles.verticalTimelineLine, { backgroundColor: theme.border }]} />
 
-                <View style={styles.timelineCard}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.timelineDateText}>
-                      {new Date(wLog.date).toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase()}
-                    </Text>
-                    <Text style={styles.timelineWeightVal}>
-                      {wLog.weightKg} kg <Text style={{ color: '#EAB308', fontSize: 11 }}>↑0.5kg</Text>
-                    </Text>
-                  </View>
-                </View>
+                {sortedLogs.map((log, index) => {
+                  const isTopNode = index === 0;
+                  const idKey = `log_${log.id}`;
+                  const isExpanded = expandedTimelineIds.includes(idKey);
+                  const formattedDate = new Date(log.date)
+                    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                    .toUpperCase();
+
+                  // Extract all fields updated in this specific check-in
+                  const updatedFields: { label: string; value: string }[] = [];
+                  if (log.weightKg) {
+                    updatedFields.push({ label: 'Body Weight', value: `${log.weightKg} kg` });
+                  }
+                  if (log.heightCm) {
+                    updatedFields.push({ label: 'Height', value: `${log.heightCm} cm` });
+                  }
+                  if (log.measurements?.bicepsLCm) {
+                    updatedFields.push({ label: 'Biceps L', value: `${log.measurements.bicepsLCm} cm` });
+                  }
+                  if (log.measurements?.bicepsRCm) {
+                    updatedFields.push({ label: 'Biceps R', value: `${log.measurements.bicepsRCm} cm` });
+                  }
+                  if (log.measurements?.neckCm) {
+                    updatedFields.push({ label: 'Neck', value: `${log.measurements.neckCm} cm` });
+                  }
+                  if (log.measurements?.chestCm) {
+                    updatedFields.push({ label: 'Chest', value: `${log.measurements.chestCm} cm` });
+                  }
+                  if (log.measurements?.waistCm) {
+                    updatedFields.push({ label: 'Waist', value: `${log.measurements.waistCm} cm` });
+                  }
+                  if (log.measurements?.hipsCm) {
+                    updatedFields.push({ label: 'Hips', value: `${log.measurements.hipsCm} cm` });
+                  }
+                  if (log.measurements?.thighsLCm) {
+                    updatedFields.push({ label: 'Thighs L', value: `${log.measurements.thighsLCm} cm` });
+                  }
+                  if (log.measurements?.thighsRCm) {
+                    updatedFields.push({ label: 'Thighs R', value: `${log.measurements.thighsRCm} cm` });
+                  }
+                  if (log.photoUrl) {
+                    updatedFields.push({ label: 'Photo Upload', value: 'Transformation Photo Attached' });
+                  }
+
+                  const summarySubtext = updatedFields.length > 0
+                    ? updatedFields.map((f) => f.label).join(' • ')
+                    : 'Check-In Update';
+
+                  return (
+                    <View key={idKey} style={styles.timelineRow}>
+                      {/* Timeline Node Icon */}
+                      <View
+                        style={[
+                          styles.timelineNode,
+                          {
+                            backgroundColor: isTopNode
+                              ? theme.isDark
+                                ? theme.accentGold
+                                : theme.primary
+                              : theme.cardInner,
+                            borderColor: isTopNode
+                              ? theme.isDark
+                                ? theme.accentGold
+                                : theme.primary
+                              : theme.border,
+                            borderWidth: isTopNode ? 0 : 1,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={log.photoUrl ? 'camera-outline' : 'radio-button-on-outline'}
+                          size={14}
+                          color={
+                            isTopNode
+                              ? theme.isDark
+                                ? '#0A1A12'
+                                : '#FFFFFF'
+                              : theme.isDark
+                                ? theme.accentGold
+                                : theme.primary
+                          }
+                        />
+                      </View>
+
+                      {/* Timeline Card Container */}
+                      <View
+                        style={[
+                          styles.timelineCard,
+                          {
+                            backgroundColor: theme.cardInner,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                      >
+                        {/* Main Header Row: [Date] [Image (if any)] [drop down] */}
+                        <TouchableOpacity
+                          style={styles.timelineCardHeaderRow}
+                          onPress={() => toggleTimelineExpand(idKey)}
+                          activeOpacity={0.8}
+                        >
+                          {/* [Date] on Left */}
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.timelineDateText, { color: theme.text }]}>
+                              {formattedDate}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.timelineSubText,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {summarySubtext}
+                            </Text>
+                          </View>
+
+                          {/* [Image (if any)] in Center */}
+                          {log.photoUrl && (
+                            <TouchableOpacity
+                              onPress={() => setViewingPhoto({ id: log.id, date: log.date, photoUrl: log.photoUrl!, note: log.note })}
+                              activeOpacity={0.8}
+                              style={{ marginHorizontal: 8 }}
+                            >
+                              <Image source={{ uri: log.photoUrl }} style={styles.timelineHeaderImg} />
+                            </TouchableOpacity>
+                          )}
+
+                          {/* [drop down] Icon on Right */}
+                          <View style={styles.chevronWrap}>
+                            <Ionicons
+                              name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                              size={18}
+                              color={theme.textSecondary}
+                            />
+                          </View>
+                        </TouchableOpacity>
+
+                        {/* Expanded Dropdown Details Section */}
+                        {isExpanded && (
+                          <View style={[styles.dropdownDetails, { borderTopColor: theme.border }]}>
+                            {/* Row 2: [Field [New Value]] - Only updated fields visible */}
+                            <Text style={[styles.dropdownTitle, { color: theme.textSecondary }]}>UPDATED FIELDS & VALUES:</Text>
+
+                            <View style={styles.fieldsGrid}>
+                              {updatedFields.map((f, fIdx) => (
+                                <View
+                                  key={fIdx}
+                                  style={[
+                                    updatedFields.length === 1 ? styles.fieldBadgeFull : styles.fieldBadge,
+                                    { backgroundColor: theme.card, borderColor: theme.border },
+                                  ]}
+                                >
+                                  <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>{f.label}</Text>
+                                  <Text style={[styles.fieldVal, { color: theme.text }]}>{f.value}</Text>
+                                </View>
+                              ))}
+                            </View>
+
+                            {/* Row 3: UPDATED METRICS */}
+                            <Text style={[styles.dropdownTitle, { color: theme.textSecondary, marginTop: 10 }]}>
+                              UPDATED METRICS:
+                            </Text>
+
+                            <View style={[styles.calcMetricsBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                              <View style={styles.calcMetricCol}>
+                                <Text style={[styles.calcMetricVal, { color: theme.text }]}>
+                                  {((log.weightKg || 76.4) / Math.pow((log.heightCm || 175) / 100, 2)).toFixed(1)}
+                                </Text>
+                                <Text style={[styles.calcMetricLabel, { color: theme.textMuted }]}>BMI Index</Text>
+                              </View>
+
+                              <View style={[styles.calcMetricDivider, { backgroundColor: theme.border }]} />
+
+                              <View style={styles.calcMetricCol}>
+                                <Text style={[styles.calcMetricVal, { color: theme.text }]}>16.4%</Text>
+                                <Text style={[styles.calcMetricLabel, { color: theme.textMuted }]}>Est. Body Fat</Text>
+                              </View>
+
+                              <View style={[styles.calcMetricDivider, { backgroundColor: theme.border }]} />
+
+                              <View style={styles.calcMetricCol}>
+                                <Text style={[styles.calcMetricVal, { color: theme.text }]}>1,845 kcal</Text>
+                                <Text style={[styles.calcMetricLabel, { color: theme.textMuted }]}>Daily BMR</Text>
+                              </View>
+                            </View>
+
+                            {log.photoUrl && (
+                              <TouchableOpacity
+                                style={[
+                                  styles.viewFullPhotoBtn,
+                                  { backgroundColor: theme.isDark ? theme.accentGold : theme.primary },
+                                ]}
+                                onPress={() => setViewingPhoto({ id: log.id, date: log.date, photoUrl: log.photoUrl!, note: log.note })}
+                                activeOpacity={0.8}
+                              >
+                                <Ionicons name="expand-outline" size={14} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
+                                <Text
+                                  style={[
+                                    styles.viewFullPhotoBtnText,
+                                    { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                                  ]}
+                                >
+                                  Inspect Full Photo
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
-            ))}
-          </View>
-        </View>
+            </View>
+          );
+        })()}
       </ScrollView>
 
-      {/* CHECK-IN MODAL (PRESERVED) */}
+      {/* CHECK-IN MODAL */}
       <Modal
         visible={checkinModalVisible}
         animationType="slide"
@@ -564,124 +1018,128 @@ export default function ProfileScreen() {
         onRequestClose={() => setCheckinModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Transformation Check-In</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Transformation Check-In</Text>
               <TouchableOpacity onPress={() => setCheckinModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalSubText}>
+            <Text style={[styles.modalSubText, { color: theme.textSecondary }]}>
               Update your body stats & measurements below (all optional). Omitted fields retain previous values.
             </Text>
 
             <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
               {/* Section 1: Basic Body Stats */}
-              <Text style={styles.sectionSubHeader}>Basic Stats (Optional)</Text>
+              <Text style={[styles.sectionSubHeader, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                Basic Stats (Optional)
+              </Text>
               <View style={styles.inputGrid}>
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Height (cm)</Text>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Height (cm)</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
                     value={heightInput}
                     onChangeText={setHeightInput}
                     placeholder={String(profile?.heightCm || 175)}
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
                   />
                 </View>
 
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Weight (kg)</Text>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Weight (kg)</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
                     value={weightInput}
                     onChangeText={setWeightInput}
-                    placeholder={String(weightHistory[0]?.weightKg || 76.4)}
-                    placeholderTextColor="#64748B"
+                    placeholder={String(weightHistory[0]?.weightKg || 75)}
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
                   />
                 </View>
               </View>
 
               {/* Section 2: Upper Body Measurements */}
-              <Text style={styles.sectionSubHeader}>Upper Body (cm)</Text>
-              <View style={styles.inputGrid}>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Chest</Text>
+              <Text style={[styles.sectionSubHeader, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                Upper Body (cm)
+              </Text>
+              <View style={styles.inputGridTriple}>
+                <View style={styles.inputColTriple}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Neck</Text>
                   <TextInput
-                    style={styles.input}
-                    value={chestInput}
-                    onChangeText={setChestInput}
-                    placeholder={String(latestMeasurements?.chestCm || 102)}
-                    placeholderTextColor="#64748B"
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Neck</Text>
-                  <TextInput
-                    style={styles.input}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
                     value={neckInput}
                     onChangeText={setNeckInput}
                     placeholder={String(latestMeasurements?.neckCm || 39)}
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
                   />
                 </View>
-              </View>
-
-              <View style={styles.inputGrid}>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Biceps (Left)</Text>
+                <View style={styles.inputColTriple}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Chest</Text>
                   <TextInput
-                    style={styles.input}
-                    value={bicepsLInput}
-                    onChangeText={setBicepsLInput}
-                    placeholder={String(latestMeasurements?.bicepsLCm || 37)}
-                    placeholderTextColor="#64748B"
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                    value={chestInput}
+                    onChangeText={setChestInput}
+                    placeholder={String(latestMeasurements?.chestCm || 102)}
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
                   />
                 </View>
-
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Biceps (Right)</Text>
+                <View style={styles.inputColTriple}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Waist</Text>
                   <TextInput
-                    style={styles.input}
-                    value={bicepsRInput}
-                    onChangeText={setBicepsRInput}
-                    placeholder={String(latestMeasurements?.bicepsRCm || 37)}
-                    placeholderTextColor="#64748B"
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              {/* Section 3: Core & Lower Body Measurements */}
-              <Text style={styles.sectionSubHeader}>Core & Lower Body (cm)</Text>
-              <View style={styles.inputGrid}>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Waist</Text>
-                  <TextInput
-                    style={styles.input}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
                     value={waistInput}
                     onChangeText={setWaistInput}
                     placeholder={String(latestMeasurements?.waistCm || 84)}
-                    placeholderTextColor="#64748B"
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Hips</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={hipsInput}
-                    onChangeText={setHipsInput}
-                    placeholder={String(latestMeasurements?.hipsCm || 98)}
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
                   />
                 </View>
@@ -689,71 +1147,199 @@ export default function ProfileScreen() {
 
               <View style={styles.inputGrid}>
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Thighs (Left)</Text>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Biceps L (cm)</Text>
                   <TextInput
-                    style={styles.input}
-                    value={thighsLInput}
-                    onChangeText={setThighsLInput}
-                    placeholder={String(latestMeasurements?.thighsLCm || 58)}
-                    placeholderTextColor="#64748B"
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                    value={bicepsLInput}
+                    onChangeText={setBicepsLInput}
+                    placeholder={String(latestMeasurements?.bicepsLCm || 37)}
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
                   />
                 </View>
-
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Thighs (Right)</Text>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Biceps R (cm)</Text>
                   <TextInput
-                    style={styles.input}
-                    value={thighsRInput}
-                    onChangeText={setThighsRInput}
-                    placeholder={String(latestMeasurements?.thighsRCm || 58)}
-                    placeholderTextColor="#64748B"
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                    value={bicepsRInput}
+                    onChangeText={setBicepsRInput}
+                    placeholder={String(latestMeasurements?.bicepsRCm || 37.5)}
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="numeric"
                   />
                 </View>
               </View>
 
-              {/* Section 4: Check-In Photos */}
-              <View style={{ marginTop: 12 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={styles.sectionSubHeader}>Check-In Photos (Max 3)</Text>
-                  <TouchableOpacity onPress={handleAddSamplePhoto} style={styles.addPhotoBtn}>
-                    <Text style={styles.addPhotoBtnText}>+ Add Photo</Text>
-                  </TouchableOpacity>
+              {/* Section 3: Lower Body Measurements */}
+              <Text style={[styles.sectionSubHeader, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                Core & Lower Body (cm)
+              </Text>
+              <View style={styles.inputGridTriple}>
+                <View style={styles.inputColTriple}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Hips</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                    value={hipsInput}
+                    onChangeText={setHipsInput}
+                    placeholder={String(latestMeasurements?.hipsCm || 98)}
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="numeric"
+                  />
                 </View>
+                <View style={styles.inputColTriple}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Thighs L</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                    value={thighsLInput}
+                    onChangeText={setThighsLInput}
+                    placeholder={String(latestMeasurements?.thighsLCm || 58)}
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={styles.inputColTriple}>
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Thighs R</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                    value={thighsRInput}
+                    onChangeText={setThighsRInput}
+                    placeholder={String(latestMeasurements?.thighsRCm || 58.5)}
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
 
-                <View style={styles.photoUploadRow}>
-                  {uploadedPhotos.map((uri, idx) => (
-                    <View key={idx} style={styles.uploadSlot}>
-                      <Image source={{ uri }} style={styles.uploadSlotImg} />
-                      <TouchableOpacity
-                        style={styles.removePhotoBadge}
-                        onPress={() => handleRemovePhoto(idx)}
-                      >
-                        <Text style={styles.removePhotoBadgeText}>✕</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {uploadedPhotos.length < 3 && (
-                    <TouchableOpacity style={styles.uploadSlotEmpty} onPress={handleAddSamplePhoto}>
-                      <Text style={styles.uploadSlotIcon}>📷</Text>
-                      <Text style={styles.uploadSlotText}>Upload</Text>
+              {/* Section 4: Physique Photos */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+                <Text style={[styles.sectionSubHeader, { color: theme.isDark ? theme.accentGold : theme.primary, marginTop: 0 }]}>
+                  Physique Photos (Optional)
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.addPhotoBtn,
+                    {
+                      backgroundColor: theme.cardInner,
+                      borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                    },
+                  ]}
+                  onPress={handleAddSamplePhoto}
+                >
+                  <Text
+                    style={[
+                      styles.addPhotoBtnText,
+                      { color: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    + Add Photo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.photoUploadRow}>
+                {uploadedPhotos.map((uri, idx) => (
+                  <View key={idx} style={styles.uploadSlot}>
+                    <Image source={{ uri }} style={styles.uploadSlotImg} />
+                    <TouchableOpacity
+                      style={styles.removePhotoBadge}
+                      onPress={() => handleRemovePhoto(idx)}
+                    >
+                      <Ionicons name="close-outline" size={12} color="#FFFFFF" />
                     </TouchableOpacity>
-                  )}
-                </View>
+                  </View>
+                ))}
+                {uploadedPhotos.length < 3 && (
+                  <TouchableOpacity
+                    style={[
+                      styles.uploadSlotEmpty,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                      },
+                    ]}
+                    onPress={handleAddSamplePhoto}
+                  >
+                    <Ionicons name="camera-outline" size={20} color={theme.isDark ? theme.accentGold : theme.primary} />
+                    <Text
+                      style={[
+                        styles.uploadSlotText,
+                        { color: theme.isDark ? theme.accentGold : theme.primary },
+                      ]}
+                    >
+                      Upload
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </ScrollView>
 
             <View style={styles.modalActionRow}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
+                style={[
+                  styles.modalCancelBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
                 onPress={() => setCheckinModalVisible(false)}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveCheckin} activeOpacity={0.8}>
-                <Text style={styles.modalSaveText}>Update</Text>
+              <TouchableOpacity
+                style={[
+                  styles.modalSaveBtn,
+                  {
+                    backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+                onPress={handleSaveCheckin}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.modalSaveText,
+                    { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                  ]}
+                >
+                  Update
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -766,7 +1352,7 @@ export default function ProfileScreen() {
         onClose={() => setCalendarModalVisible(false)}
       />
 
-      {/* 🖼️ CHANGE PROFILE PICTURE MODAL */}
+      {/* CHANGE PROFILE PICTURE MODAL */}
       <Modal
         visible={avatarModalVisible}
         animationType="fade"
@@ -774,15 +1360,26 @@ export default function ProfileScreen() {
         onRequestClose={() => setAvatarModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Change Profile Picture</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Change Profile Picture</Text>
               <TouchableOpacity onPress={() => setAvatarModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalSubText}>Select a photo preset or remove photo to use initials:</Text>
+            <Text style={[styles.modalSubText, { color: theme.textSecondary }]}>
+              Select a photo preset or remove photo to use initials:
+            </Text>
 
             <View style={styles.avatarPresetGrid}>
               {avatarPresets.map((uri, idx) => (
@@ -790,7 +1387,9 @@ export default function ProfileScreen() {
                   key={idx}
                   style={[
                     styles.avatarPresetSlot,
-                    profile?.avatarUrl === uri && styles.avatarPresetSlotActive,
+                    profile?.avatarUrl === uri && {
+                      borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                    },
                   ]}
                   onPress={() => handleSelectAvatar(uri)}
                   activeOpacity={0.8}
@@ -801,12 +1400,111 @@ export default function ProfileScreen() {
             </View>
 
             <TouchableOpacity
-              style={styles.removeAvatarBtn}
+              style={[
+                styles.removeAvatarBtn,
+                {
+                  backgroundColor: theme.cardInner,
+                  borderColor: theme.danger,
+                },
+              ]}
               onPress={() => handleSelectAvatar(undefined)}
               activeOpacity={0.8}
             >
-              <Text style={styles.removeAvatarBtnText}>Remove Photo (Use Initials)</Text>
+              <Text style={[styles.removeAvatarBtnText, { color: theme.danger }]}>
+                Remove Photo (Use Initials)
+              </Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* EXPANDED CHECK-IN PHOTO INSPECTION MODAL */}
+      <Modal
+        visible={!!viewingPhoto}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setViewingPhoto(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                {viewingPhoto
+                  ? new Date(viewingPhoto.date)
+                    .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    .toUpperCase()
+                  : 'Check-In Photo'}
+              </Text>
+              <TouchableOpacity onPress={() => setViewingPhoto(null)}>
+                <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.modalSubText, { color: theme.textSecondary }]}>
+              {viewingPhoto?.note || 'Transformation Photo Update'}
+            </Text>
+
+            {viewingPhoto && (
+              <View style={styles.expandedPhotoContainer}>
+                <Image
+                  source={{ uri: viewingPhoto.photoUrl }}
+                  style={styles.expandedPhotoImg}
+                  resizeMode="cover"
+                />
+              </View>
+            )}
+
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modalCancelBtn,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+                onPress={() => setViewingPhoto(null)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Close</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalDeleteBtn, { backgroundColor: theme.danger }]}
+                onPress={() => {
+                  if (!viewingPhoto) return;
+                  Alert.alert(
+                    'Delete Check-In Photo',
+                    'Are you sure you want to remove this photo from your check-in journal?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => {
+                          deleteCheckinPhoto(viewingPhoto.id);
+                          deleteCheckinLog(viewingPhoto.id);
+                          useTrainerStore.getState().deleteLiveFeedEventByPhotoUrl(viewingPhoto.photoUrl);
+                          useTrainerStore.getState().removePhotoFromLiveFeed(viewingPhoto.photoUrl);
+                          setViewingPhoto(null);
+                        },
+                      },
+                    ]
+                  );
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 }}>Delete Photo</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -819,7 +1517,6 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#06110D',
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -831,38 +1528,32 @@ const styles = StyleSheet.create({
   profileHeaderCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#091512',
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     gap: 14,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   avatarGoldBorder: {
     width: 150,
     height: 150,
     borderRadius: 75,
     borderWidth: 3,
-    borderColor: '#10B981',
     padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06110D',
     position: 'relative',
   },
   avatarEditBadge: {
     position: 'absolute',
     bottom: 4,
     right: 4,
-    backgroundColor: '#06110D',
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#10B981',
   },
   avatarPresetGrid: {
     flexDirection: 'row',
@@ -880,23 +1571,17 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: 'transparent',
   },
-  avatarPresetSlotActive: {
-    borderColor: '#10B981',
-  },
   avatarPresetImg: {
     width: '100%',
     height: '100%',
   },
   removeAvatarBtn: {
-    backgroundColor: '#1E293B',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#EF444444',
   },
   removeAvatarBtnText: {
-    color: '#EF4444',
     fontSize: 13,
     fontWeight: 'bold',
   },
@@ -909,12 +1594,10 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 75,
-    backgroundColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
   },
   centeredAvatarText: {
-    color: '#FFFFFF',
     fontSize: 75,
     fontWeight: 'bold',
   },
@@ -923,13 +1606,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroNameText: {
-    color: '#F8FAFC',
     fontSize: 26,
     fontWeight: 'bold',
     paddingLeft: 12,
   },
   heroSubText: {
-    color: '#94A3B8',
     fontSize: 15,
     marginTop: 2,
     paddingLeft: 12,
@@ -941,21 +1622,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 12,
-    backgroundColor: '#06110D',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#EAB30844',
   },
   trainerCodeChipLabel: {
-    color: '#EAB308',
     fontSize: 10,
     fontWeight: 'bold',
     letterSpacing: 0.8,
   },
   trainerCodeChipVal: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
     fontFamily: 'monospace',
@@ -965,11 +1642,9 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#1E293B',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#EAB30844',
   },
 
   /* Linked Trainer Chip (Client account) */
@@ -978,27 +1653,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 12,
-    backgroundColor: '#06110D',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#10B98133',
   },
   linkedTrainerChipLabel: {
-    color: '#10B981',
     fontSize: 10,
     fontWeight: 'bold',
     letterSpacing: 0.8,
   },
   linkedTrainerChipName: {
-    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 1,
   },
   linkedTrainerChipCode: {
-    color: '#64748B',
     fontSize: 10,
     fontFamily: 'monospace',
     marginTop: 2,
@@ -1031,15 +1701,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#091512',
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#10B98166',
   },
   calendarPillText: {
-    color: '#10B981',
     fontSize: 12.5,
     fontWeight: 'bold',
   },
@@ -1049,28 +1716,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#EAB308',
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 14,
   },
   checkinPillText: {
-    color: '#06110D',
     fontSize: 12.5,
     fontWeight: 'bold',
   },
 
   /* SECTION CARDS */
   sectionCard: {
-    backgroundColor: '#091512',
     borderRadius: 20,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   sectionTitle: {
-    color: '#F8FAFC',
     fontSize: 17,
     fontWeight: 'bold',
     marginBottom: 14,
@@ -1084,27 +1746,22 @@ const styles = StyleSheet.create({
   },
   metricTile: {
     width: '48%',
-    backgroundColor: '#06110D',
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#EAB30833',
   },
   metricLabel: {
-    color: '#EAB308',
     fontSize: 10.5,
     fontWeight: 'bold',
     letterSpacing: 0.5,
   },
   metricVal: {
-    color: '#F8FAFC',
     fontSize: 20,
     fontWeight: 'bold',
     fontFamily: 'monospace',
     marginTop: 4,
   },
   metricSub: {
-    color: '#94A3B8',
     fontSize: 10.5,
     marginTop: 2,
   },
@@ -1117,12 +1774,10 @@ const styles = StyleSheet.create({
   },
   measureTile: {
     width: '48%',
-    backgroundColor: '#06110D',
     borderRadius: 14,
     padding: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   measureTileHeader: {
     flexDirection: 'row',
@@ -1135,20 +1790,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   measureTileLabel: {
-    color: '#94A3B8',
     fontSize: 10,
     fontWeight: 'bold',
     letterSpacing: 0.8,
   },
   measureTileVal: {
-    color: '#F8FAFC',
     fontSize: 20,
     fontWeight: 'bold',
     fontFamily: 'monospace',
     textAlign: 'center',
   },
   measureTileUnit: {
-    color: '#64748B',
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1160,18 +1812,15 @@ const styles = StyleSheet.create({
   },
   prKpiCard: {
     flex: 1,
-    backgroundColor: '#06110D',
     borderRadius: 14,
     padding: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#EAB30833',
   },
   prKpiIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#451A03',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
@@ -1180,7 +1829,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   prKpiLabel: {
-    color: '#94A3B8',
     fontSize: 9,
     fontWeight: 'bold',
     letterSpacing: 0.6,
@@ -1188,13 +1836,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   prKpiValue: {
-    color: '#EAB308',
     fontSize: 24,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
   prKpiUnit: {
-    color: '#64748B',
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
@@ -1205,90 +1851,189 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   addCheckinGoldBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#EAB308',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addCheckinGoldBtnText: {
-    color: '#06110D',
     fontSize: 20,
     fontWeight: 'bold',
     lineHeight: 22,
   },
   timelineContainer: {
     position: 'relative',
-    paddingLeft: 20,
-    gap: 12,
+    paddingLeft: 38,
+    gap: 16,
   },
   verticalTimelineLine: {
     position: 'absolute',
-    left: 11,
-    top: 10,
-    bottom: 10,
+    left: 14,
+    top: 16,
+    bottom: 16,
     width: 2,
-    backgroundColor: '#10B98133',
   },
   timelineRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'flex-start',
     position: 'relative',
   },
   timelineNode: {
     position: 'absolute',
-    left: -20,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#EAB308',
+    left: -38,
+    top: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
   },
   timelineNodeIcon: {
-    fontSize: 11,
+    fontSize: 14,
   },
   timelineCard: {
     flex: 1,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    marginLeft: 12,
+  },
+  timelineCardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#06110D',
-    borderRadius: 14,
-    padding: 10,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#10B98122',
+    gap: 14,
+  },
+  chevronWrap: {
+    padding: 4,
   },
   timelineCardImg: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
+    width: 76,
+    height: 76,
+    borderRadius: 12,
   },
   timelineDateText: {
-    color: '#F8FAFC',
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   timelineSubText: {
-    color: '#EAB308',
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 4,
   },
   timelineWeightVal: {
-    color: '#F8FAFC',
+    fontSize: 17,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    marginTop: 4,
+  },
+  dropdownDetails: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  dropdownTitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  fieldsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  fieldBadge: {
+    width: '48%',
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  fieldBadgeFull: {
+    width: '100%',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  fieldLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  fieldVal: {
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  timelineHeaderImg: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+  },
+  calcMetricsBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  calcMetricCol: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  calcMetricVal: {
     fontSize: 13,
     fontWeight: 'bold',
     fontFamily: 'monospace',
+  },
+  calcMetricLabel: {
+    fontSize: 9,
+    fontWeight: '600',
     marginTop: 2,
   },
-  timelineDeleteBtn: {
-    padding: 6,
+  calcMetricDivider: {
+    width: 1,
+    height: 24,
+  },
+  viewFullPhotoBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  viewFullPhotoBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  expandedPhotoContainer: {
+    width: '100%',
+    height: 280,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginVertical: 14,
+  },
+  expandedPhotoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  modalDeleteBtn: {
+    flex: 1.5,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   /* MODAL STYLES */
@@ -1299,11 +2044,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modalContent: {
-    backgroundColor: '#0F172A',
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#10B98133',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1312,23 +2055,19 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   modalTitle: {
-    color: '#F8FAFC',
     fontSize: 17,
     fontWeight: 'bold',
   },
   modalCloseText: {
-    color: '#94A3B8',
     fontSize: 16,
     fontWeight: 'bold',
   },
   modalSubText: {
-    color: '#94A3B8',
     fontSize: 11.5,
     marginBottom: 14,
     lineHeight: 16,
   },
   sectionSubHeader: {
-    color: '#A7F3D0',
     fontSize: 12,
     fontWeight: 'bold',
     marginTop: 10,
@@ -1351,32 +2090,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inputLabel: {
-    color: '#94A3B8',
     fontSize: 11,
     fontWeight: 'bold',
     marginBottom: 4,
   },
   input: {
-    backgroundColor: '#1E293B',
-    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: 'bold',
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   addPhotoBtn: {
-    backgroundColor: '#064E3B',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   addPhotoBtnText: {
-    color: '#10B981',
     fontSize: 10.5,
     fontWeight: 'bold',
   },
@@ -1416,9 +2148,7 @@ const styles = StyleSheet.create({
     width: 70,
     height: 80,
     borderRadius: 10,
-    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#10B981',
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1427,7 +2157,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   uploadSlotText: {
-    color: '#10B981',
     fontSize: 10,
     fontWeight: 'bold',
     marginTop: 2,
@@ -1439,25 +2168,22 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    backgroundColor: '#1E293B',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
+    borderWidth: 1,
   },
   modalCancelText: {
-    color: '#94A3B8',
     fontSize: 13,
     fontWeight: 'bold',
   },
   modalSaveBtn: {
     flex: 1.5,
-    backgroundColor: '#10B981',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
   modalSaveText: {
-    color: '#064E3B',
     fontSize: 13,
     fontWeight: 'bold',
   },

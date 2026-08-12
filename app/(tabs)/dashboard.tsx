@@ -11,6 +11,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useNutritionStore } from '../../store/nutritionStore';
 import { useWorkoutStore } from '../../store/workoutStore';
 import { useTrainerStore } from '../../store/trainerStore';
+import { useTheme } from '../../lib/theme';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function DashboardScreen() {
   const liveFeedCards = useTrainerStore((state) => state.liveFeedCards);
   const clients = useTrainerStore((state) => state.clients);
   const toggleAcknowledgeEvent = useTrainerStore((state) => state.toggleAcknowledgeEvent);
+  const theme = useTheme();
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedClientFilter, setSelectedClientFilter] = useState<string>('ALL');
@@ -46,7 +48,7 @@ export default function DashboardScreen() {
   });
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -57,15 +59,24 @@ export default function DashboardScreen() {
         {role === 'TRAINER' && (
           <View style={styles.activityFeedContainer}>
             <View style={styles.feedHeaderRow}>
-              <Text style={styles.clientActivityHeaderTitle}>Client Activity</Text>
-              <Text style={[styles.feedCountBadge, unacknowledgedCount === 0 && styles.feedCountBadgeDone]}>
+              <Text style={[styles.clientActivityHeaderTitle, { color: theme.text }]}>Client Activity</Text>
+              <Text
+                style={[
+                  styles.feedCountBadge,
+                  {
+                    color: theme.isDark ? theme.accentGold : theme.primary,
+                    backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                    borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+              >
                 {unacknowledgedCount === 0
-                  ? '✓ All Acknowledged'
+                  ? 'All Acknowledged'
                   : `${unacknowledgedCount} ${unacknowledgedCount === 1 ? 'update' : 'updates'}`}
               </Text>
             </View>
 
-            <View style={styles.clientActivityHeaderDivider} />
+            <View style={[styles.clientActivityHeaderDivider, { backgroundColor: theme.border }]} />
 
             {/* Client Filter Selector Bar */}
             <ScrollView
@@ -75,11 +86,40 @@ export default function DashboardScreen() {
               contentContainerStyle={styles.filterContainer}
             >
               <TouchableOpacity
-                style={[styles.filterPill, selectedClientFilter === 'ALL' && styles.filterPillActive]}
+                style={[
+                  styles.filterPill,
+                  {
+                    backgroundColor:
+                      selectedClientFilter === 'ALL'
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.card,
+                    borderColor:
+                      selectedClientFilter === 'ALL'
+                        ? theme.isDark
+                          ? theme.accentGold
+                          : theme.primary
+                        : theme.border,
+                  },
+                ]}
                 onPress={() => setSelectedClientFilter('ALL')}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.filterPillText, selectedClientFilter === 'ALL' && styles.filterPillTextActive]}>
+                <Text
+                  style={[
+                    styles.filterPillText,
+                    {
+                      color:
+                        selectedClientFilter === 'ALL'
+                          ? theme.isDark
+                            ? '#0A1A12'
+                            : '#FFFFFF'
+                          : theme.textSecondary,
+                      fontWeight: selectedClientFilter === 'ALL' ? 'bold' : '600',
+                    },
+                  ]}
+                >
                   All Clients ({liveFeedCards.length})
                 </Text>
               </TouchableOpacity>
@@ -97,11 +137,37 @@ export default function DashboardScreen() {
                 return (
                   <TouchableOpacity
                     key={client.clientId}
-                    style={[styles.filterPill, isActive && styles.filterPillActive]}
+                    style={[
+                      styles.filterPill,
+                      {
+                        backgroundColor: isActive
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.card,
+                        borderColor: isActive
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.border,
+                      },
+                    ]}
                     onPress={() => setSelectedClientFilter(client.clientId)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                    <Text
+                      style={[
+                        styles.filterPillText,
+                        {
+                          color: isActive
+                            ? theme.isDark
+                              ? '#0A1A12'
+                              : '#FFFFFF'
+                            : theme.textSecondary,
+                          fontWeight: isActive ? 'bold' : '600',
+                        },
+                      ]}
+                    >
                       {client.fullName} ({count})
                     </Text>
                   </TouchableOpacity>
@@ -112,8 +178,15 @@ export default function DashboardScreen() {
             {/* Filtered Activity Cards */}
             <View style={styles.activityList}>
               {sortedFeedCards.length === 0 ? (
-                <View style={styles.emptyFeedBox}>
-                  <Text style={styles.emptyFeedText}>No recent activity logs for this client.</Text>
+                <View
+                  style={[
+                    styles.emptyFeedBox,
+                    { backgroundColor: theme.card, borderColor: theme.border },
+                  ]}
+                >
+                  <Text style={[styles.emptyFeedText, { color: theme.textMuted }]}>
+                    No recent activity logs for this client.
+                  </Text>
                 </View>
               ) : (
                 sortedFeedCards.map((card) => (
@@ -130,6 +203,8 @@ export default function DashboardScreen() {
                     onToggleAcknowledge={() => toggleAcknowledgeEvent(card.id)}
                     tags={card.tags}
                     eventType={card.eventType}
+                    photoUrl={card.photoUrl}
+                    updatedValues={card.updatedValues}
                     onPressCard={() => router.push(`/clients/${card.clientId}`)}
                   />
                 ))
@@ -139,19 +214,41 @@ export default function DashboardScreen() {
         )}
 
         {/* Today's Meals Section */}
-        <View style={styles.sectionCard}>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>🥗 Today's Logged Meals</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Today's Logged Meals</Text>
             <TouchableOpacity
-              style={styles.actionBtnSmall}
+              style={[
+                styles.actionBtnSmall,
+                {
+                  backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                  ...theme.shadowButton,
+                },
+              ]}
               onPress={() => router.push('/nutrition/scan-meal')}
             >
-              <Text style={styles.actionBtnSmallText}>+ Log Meal</Text>
+              <Text
+                style={[
+                  styles.actionBtnSmallText,
+                  { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                ]}
+              >
+                + Log Meal
+              </Text>
             </TouchableOpacity>
           </View>
 
           {todayMeals.length === 0 ? (
-            <Text style={styles.emptyText}>No meals logged yet today.</Text>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>No meals logged yet today.</Text>
           ) : (
             todayMeals.map((meal) => (
               <LoggedMealCategoryCard
@@ -165,16 +262,41 @@ export default function DashboardScreen() {
         </View>
 
         {/* Recent Workouts Section */}
-        <View style={styles.sectionCard}>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>🏋️ Recent Workouts</Text>
-            <TouchableOpacity style={styles.actionBtnSmall} onPress={handleStartWorkout}>
-              <Text style={styles.actionBtnSmallText}>+ Start Workout</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Workouts</Text>
+            <TouchableOpacity
+              style={[
+                styles.actionBtnSmall,
+                {
+                  backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                  ...theme.shadowButton,
+                },
+              ]}
+              onPress={handleStartWorkout}
+            >
+              <Text
+                style={[
+                  styles.actionBtnSmallText,
+                  { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                ]}
+              >
+                + Start Workout
+              </Text>
             </TouchableOpacity>
           </View>
 
           {workoutHistory.length === 0 ? (
-            <Text style={styles.emptyText}>No recent workout sessions logged.</Text>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>No recent workout sessions logged.</Text>
           ) : (
             workoutHistory.slice(0, 5).map((session) => (
               <LoggedWorkoutCard key={session.id} session={session} />
@@ -191,7 +313,6 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -208,26 +329,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   clientActivityHeaderTitle: {
-    color: '#F8FAFC',
     fontSize: 22,
     fontWeight: 'bold',
   },
   feedCountBadge: {
-    color: '#10B981',
     fontSize: 12,
     fontWeight: 'bold',
-    backgroundColor: '#064E3B',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-  },
-  feedCountBadgeDone: {
-    color: '#34D399',
-    backgroundColor: '#022C22',
+    borderWidth: 1,
   },
   clientActivityHeaderDivider: {
     height: 1,
-    backgroundColor: '#10B98122',
     marginBottom: 14,
   },
   filterScroll: {
@@ -237,45 +351,32 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterPill: {
-    backgroundColor: '#1E293B',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  filterPillActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
   },
   filterPillText: {
-    color: '#94A3B8',
     fontSize: 12,
-    fontWeight: '600',
-  },
-  filterPillTextActive: {
-    color: '#A7F3D0',
-    fontWeight: 'bold',
   },
   activityList: {
     gap: 4,
   },
   emptyFeedBox: {
-    backgroundColor: '#1E293B',
     borderRadius: 16,
     padding: 20,
     alignItems: 'center',
+    borderWidth: 1,
   },
   emptyFeedText: {
-    color: '#64748B',
     fontSize: 13,
     fontStyle: 'italic',
   },
   sectionCard: {
-    backgroundColor: '#1E293B',
     borderRadius: 20,
     padding: 20,
     marginBottom: 16,
+    borderWidth: 1,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -284,46 +385,19 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTitle: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
   },
   actionBtnSmall: {
-    backgroundColor: '#10B981',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
   },
   actionBtnSmallText: {
-    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: 'bold',
-  },
-  workoutCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-  },
-  workoutTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  workoutSummary: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  workoutDate: {
-    color: '#64748B',
-    fontSize: 12,
   },
   emptyText: {
-    color: '#64748B',
     fontSize: 13,
     fontStyle: 'italic',
     textAlign: 'center',

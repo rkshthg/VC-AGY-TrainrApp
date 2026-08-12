@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { CompletedWorkoutHeader } from '../store/workoutStore';
+import { useTheme } from '../lib/theme';
 
 export interface LoggedWorkoutCardProps {
   session: CompletedWorkoutHeader;
@@ -12,6 +14,7 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
   defaultExpanded = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const theme = useTheme();
 
   // Format date label (e.g. Yesterday, Today, or Jul 20)
   const formatSessionDate = (isoString: string) => {
@@ -27,14 +30,14 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
     }
   };
 
-  // Derive icon from title
-  const getSessionIcon = (title: string) => {
+  // Derive vector icon name from title
+  const getSessionIconName = (title: string): keyof typeof Ionicons.glyphMap => {
     const lower = title.toLowerCase();
-    if (lower.includes('push') || lower.includes('bench')) return '🏋️';
-    if (lower.includes('pull') || lower.includes('back')) return '💪';
-    if (lower.includes('leg') || lower.includes('squat')) return '🦵';
-    if (lower.includes('core') || lower.includes('cardio')) return '🔥';
-    return '⚡';
+    if (lower.includes('push') || lower.includes('bench') || lower.includes('chest')) return 'barbell-outline';
+    if (lower.includes('pull') || lower.includes('back') || lower.includes('arm')) return 'fitness-outline';
+    if (lower.includes('leg') || lower.includes('squat')) return 'walk-outline';
+    if (lower.includes('core') || lower.includes('cardio') || lower.includes('hiit')) return 'flame-outline';
+    return 'flash-outline';
   };
 
   const exerciseLogs = session.exerciseLogs || [
@@ -43,61 +46,137 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
     { name: 'Tricep Rope Pushdown', sets: 3, reps: '12-15 reps', targetWeightKg: 25, totalVolumeKg: 800 },
   ];
 
+  const iconName = getSessionIconName(session.title);
+
   return (
-    <View style={styles.outerContainer}>
+    <View
+      style={[
+        styles.outerContainer,
+        {
+          backgroundColor: theme.card,
+          borderColor: theme.border,
+          ...theme.shadow,
+        },
+      ]}
+    >
       {/* Top Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.titleGroup}>
-          <Text style={styles.sessionIcon}>{getSessionIcon(session.title)}</Text>
-          <Text style={styles.sessionTitle} numberOfLines={1}>
+          <Ionicons
+            name={iconName}
+            size={18}
+            color={theme.isDark ? theme.accentGold : theme.primary}
+          />
+          <Text
+            style={[
+              styles.sessionTitle,
+              { color: theme.isDark ? theme.accentGold : theme.primary },
+            ]}
+            numberOfLines={1}
+          >
             {session.title.toUpperCase()}
           </Text>
         </View>
 
-        <Text style={styles.totalVolumeText}>
+        <Text style={[styles.totalVolumeText, { color: theme.text }]}>
           {session.totalVolumeKg >= 1000
             ? `${(session.totalVolumeKg / 1000).toFixed(1)}k`
             : session.totalVolumeKg}{' '}
-          <Text style={styles.volumeUnit}>kg</Text>
+          <Text
+            style={[
+              styles.volumeUnit,
+              { color: theme.isDark ? theme.accentGold : theme.primary },
+            ]}
+          >
+            kg
+          </Text>
         </Text>
       </View>
 
       {/* Subheader & Dropdown Toggle Row */}
       <View style={styles.subHeaderRow}>
-        <Text style={styles.sessionMetaText}>
+        <Text style={[styles.sessionMetaText, { color: theme.textSecondary }]}>
           {formatSessionDate(session.date)} • {session.durationMinutes} min • {session.exerciseCount}{' '}
           Exercises
         </Text>
 
         <TouchableOpacity
-          style={[styles.toggleBtn, isExpanded && styles.toggleBtnActive]}
+          style={[
+            styles.toggleBtn,
+            {
+              backgroundColor: isExpanded
+                ? theme.isDark
+                  ? theme.cardInner
+                  : theme.badgeBg
+                : theme.cardInner,
+              borderColor: isExpanded ? theme.accentGold : theme.border,
+            },
+          ]}
           onPress={() => setIsExpanded(!isExpanded)}
           activeOpacity={0.8}
         >
-          <Text style={[styles.toggleBtnText, isExpanded && styles.toggleBtnTextActive]}>
-            {isExpanded ? '▲ Hide Details' : `▼ ${session.exerciseCount || 3} Exercises`}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons
+              name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+              size={12}
+              color={
+                isExpanded
+                  ? theme.isDark
+                    ? theme.accentGold
+                    : theme.primary
+                  : theme.textSecondary
+              }
+            />
+            <Text
+              style={[
+                styles.toggleBtnText,
+                {
+                  color: isExpanded
+                    ? theme.isDark
+                      ? theme.accentGold
+                      : theme.primary
+                    : theme.textSecondary,
+                },
+              ]}
+            >
+              {isExpanded ? 'Hide Details' : `${session.exerciseCount || 3} Exercises`}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
       {/* Expanded Exercise Inset List */}
       {isExpanded && (
         <>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <View style={styles.itemsList}>
             {exerciseLogs.map((item, index) => (
-              <View key={index} style={styles.itemCard}>
+              <View
+                key={index}
+                style={[
+                  styles.itemCard,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
                 <View style={styles.itemTopRow}>
-                  <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemVolumeText}>
-                    {item.totalVolumeKg} <Text style={styles.itemVolumeUnit}>kg</Text>
+                  <Text style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
+                  <Text
+                    style={[
+                      styles.itemVolumeText,
+                      { color: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    {item.totalVolumeKg || 1200} <Text style={styles.volumeSubUnit}>kg</Text>
                   </Text>
                 </View>
 
-                <Text style={styles.itemBottomRow}>
-                  {item.sets} Sets <Text style={styles.dotSeparator}>•</Text> {item.reps}{' '}
-                  <Text style={styles.pipeSeparator}>|</Text> Target: {item.targetWeightKg} kg
+                <Text style={[styles.itemBottomRow, { color: theme.textSecondary }]}>
+                  {item.sets} sets <Text style={{ color: theme.accentGold }}>•</Text> {item.reps}{' '}
+                  <Text style={{ color: theme.border }}>|</Text> @ {item.targetWeightKg || 60} kg
                 </Text>
               </View>
             ))}
@@ -110,122 +189,92 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
 
 const styles = StyleSheet.create({
   outerContainer: {
-    backgroundColor: '#091512',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#10B98133',
     padding: 16,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 6,
   },
   titleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flex: 1,
-    marginRight: 8,
-  },
-  sessionIcon: {
-    fontSize: 16,
   },
   sessionTitle: {
-    color: '#A7F3D0',
-    fontSize: 13.5,
+    fontSize: 14,
     fontWeight: 'bold',
     letterSpacing: 1.2,
   },
   totalVolumeText: {
-    color: '#F8FAFC',
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
   volumeUnit: {
-    color: '#A7F3D0',
-    fontSize: 12,
-    fontWeight: 'normal',
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: 'normal',
   },
   subHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6,
   },
   sessionMetaText: {
-    color: '#64748B',
-    fontSize: 11,
-    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
   },
   toggleBtn: {
-    backgroundColor: '#0F172A',
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  toggleBtnActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
   },
   toggleBtnText: {
-    color: '#CBD5E1',
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: 'bold',
-  },
-  toggleBtnTextActive: {
-    color: '#10B981',
   },
   divider: {
     height: 1,
-    backgroundColor: '#10B98122',
     marginVertical: 12,
   },
   itemsList: {
-    gap: 8,
+    gap: 10,
   },
   itemCard: {
-    backgroundColor: '#0C1E19',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   itemTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 4,
   },
   itemName: {
-    color: '#F8FAFC',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   itemVolumeText: {
-    color: '#10B981',
-    fontSize: 12.5,
+    fontSize: 14,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
-  itemVolumeUnit: {
-    color: '#64748B',
-    fontSize: 10.5,
-    fontWeight: 'normal',
+  volumeSubUnit: {
+    fontSize: 11,
+    fontWeight: '600',
+    fontFamily: 'normal',
   },
   itemBottomRow: {
-    color: '#94A3B8',
-    fontSize: 11,
-  },
-  dotSeparator: {
-    color: '#10B981',
-    fontWeight: 'bold',
-  },
-  pipeSeparator: {
-    color: '#334155',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

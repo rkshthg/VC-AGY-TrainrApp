@@ -10,16 +10,20 @@ import {
   TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { HeaderBar } from '../../components/HeaderBar';
 import { SettingsDrawer } from '../../components/SettingsDrawer';
 import { NutritionChart } from '../../components/NutritionChart';
 import { useNutritionStore } from '../../store/nutritionStore';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../lib/theme';
 
 export default function NutritionScreen() {
   const router = useRouter();
   const { todayMeals, deleteMealEntry, saveMealEntry } = useNutritionStore();
   const profile = useAuthStore((state) => state.profile);
+  const theme = useTheme();
+
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [expandedHistoryDays, setExpandedHistoryDays] = useState<Record<string, boolean>>({});
 
@@ -92,32 +96,15 @@ export default function NutritionScreen() {
     Alert.alert('Meal Logged', `Logged ${dishTitleInput.trim()} under ${selectedCategory}.`);
   };
 
-  // Aggregated Daily Macro Calculations
-  const targetCalories = 2100;
-  const totalCaloriesLogged = todayMeals.reduce((acc, m) => acc + (m.totalCalories || 0), 0);
-  const calPct = Math.min(100, Math.round((totalCaloriesLogged / targetCalories) * 100));
-
-  const totalProteinLogged = todayMeals.reduce((acc, m) => acc + (m.totalProteinG || 0), 0);
-  const targetProtein = 180;
-  const proteinPct = Math.min(100, Math.round((totalProteinLogged / targetProtein) * 100));
-
-  const totalCarbsLogged = todayMeals.reduce((acc, m) => acc + (m.totalCarbsG || 0), 0);
-  const targetCarbs = 250;
-  const carbsPct = Math.min(100, Math.round((totalCarbsLogged / targetCarbs) * 100));
-
-  const totalFatLogged = todayMeals.reduce((acc, m) => acc + (m.totalFatG || 0), 0);
-  const targetFat = 70;
-  const fatPct = Math.min(100, Math.round((totalFatLogged / targetFat) * 100));
-
   const mealCategories: Array<{
     type: 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACKS';
     title: string;
-    icon: string;
+    iconName: keyof typeof Ionicons.glyphMap;
   }> = [
-    { type: 'BREAKFAST', title: 'Breakfast', icon: '🍳' },
-    { type: 'LUNCH', title: 'Lunch', icon: '🥗' },
-    { type: 'DINNER', title: 'Dinner', icon: '🐟' },
-    { type: 'SNACKS', title: 'Snacks', icon: '🍎' },
+    { type: 'BREAKFAST', title: 'Breakfast', iconName: 'sunny-outline' },
+    { type: 'LUNCH', title: 'Lunch', iconName: 'partly-sunny-outline' },
+    { type: 'DINNER', title: 'Dinner', iconName: 'moon-outline' },
+    { type: 'SNACKS', title: 'Snacks', iconName: 'nutrition-outline' },
   ];
 
   const samplePastSevenDaysHistory = [
@@ -220,166 +207,208 @@ export default function NutritionScreen() {
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* 🥗 HERO MACRO TRACKER CARD (CONCEPT 3: STACKED SEGMENTED ENERGY FLOW) */}
-        {(() => {
-          const proteinKcal = Math.round(totalProteinLogged * 4);
-          const carbsKcal = Math.round(totalCarbsLogged * 4);
-          const fatKcal = Math.round(totalFatLogged * 9);
-          const remainingKcal = Math.max(0, targetCalories - totalCaloriesLogged);
-          const totalKcalTrack = Math.max(targetCalories, proteinKcal + carbsKcal + fatKcal + remainingKcal);
-
-          return (
-            <View style={styles.heroMacroCard}>
-              {/* Header Row: Title + Consumed / Target Subtitle & Remaining Pill */}
-              <View style={styles.energyFlowHeaderRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.heroTitle}>Daily Energy & Macro Flow</Text>
-                  <Text style={styles.energyFlowSub}>
-                    {totalCaloriesLogged.toLocaleString()} of {targetCalories.toLocaleString()} kcal consumed
-                  </Text>
-                </View>
-                <View style={styles.remainingPillBadge}>
-                  <Text style={styles.remainingPillText}>
-                    ⚡ {remainingKcal} left
-                  </Text>
-                </View>
-              </View>
-
-              {/* Proportional Segmented Progress Bar */}
-              <View style={styles.segmentedProgressBarTrack}>
-                {proteinKcal > 0 && (
-                  <View style={[styles.segmentedFill, { flex: proteinKcal, backgroundColor: '#3B82F6' }]} />
-                )}
-                {carbsKcal > 0 && (
-                  <View style={[styles.segmentedFill, { flex: carbsKcal, backgroundColor: '#A855F7' }]} />
-                )}
-                {fatKcal > 0 && (
-                  <View style={[styles.segmentedFill, { flex: fatKcal, backgroundColor: '#F59E0B' }]} />
-                )}
-                {(remainingKcal > 0 || totalKcalTrack === 0) && (
-                  <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remainingKcal), backgroundColor: '#1E293B' }]} />
-                )}
-              </View>
-
-              {/* 3-Column Macro Details Grid */}
-              <View style={styles.macroPillGrid}>
-                {/* Protein */}
-                <View style={styles.macroPillCard}>
-                  <View style={styles.macroPillHeader}>
-                    <View style={[styles.macroDot, { backgroundColor: '#3B82F6' }]} />
-                    <Text style={styles.macroPillLabel}>PROTEIN</Text>
-                  </View>
-                  <Text style={styles.macroPillVal}>{Math.round(totalProteinLogged)}g / {targetProtein}g</Text>
-                  <Text style={styles.macroPillSub}>{proteinKcal} kcal ({proteinPct}%)</Text>
-                </View>
-
-                {/* Carbs */}
-                <View style={styles.macroPillCard}>
-                  <View style={styles.macroPillHeader}>
-                    <View style={[styles.macroDot, { backgroundColor: '#A855F7' }]} />
-                    <Text style={styles.macroPillLabel}>CARBS</Text>
-                  </View>
-                  <Text style={styles.macroPillVal}>{Math.round(totalCarbsLogged)}g / {targetCarbs}g</Text>
-                  <Text style={styles.macroPillSub}>{carbsKcal} kcal ({carbsPct}%)</Text>
-                </View>
-
-                {/* Fat */}
-                <View style={styles.macroPillCard}>
-                  <View style={styles.macroPillHeader}>
-                    <View style={[styles.macroDot, { backgroundColor: '#F59E0B' }]} />
-                    <Text style={styles.macroPillLabel}>FAT</Text>
-                  </View>
-                  <Text style={styles.macroPillVal}>{Math.round(totalFatLogged)}g / {targetFat}g</Text>
-                  <Text style={styles.macroPillSub}>{fatKcal} kcal ({fatPct}%)</Text>
-                </View>
-              </View>
-            </View>
-          );
-        })()}
+        {/* HERO MACRO TRACKER CARD (Matches Dashboard Tab 1:1) */}
+        <NutritionChart />
 
         {/* DUAL LOG ACTION BUTTONS */}
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={styles.btnScanner}
+            style={[
+              styles.btnScanner,
+              {
+                backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                ...theme.shadowButton,
+              },
+            ]}
             onPress={() => router.push('/nutrition/scan-meal')}
             activeOpacity={0.8}
           >
-            <Text style={styles.btnScannerIcon}>📸</Text>
+            <Ionicons name="camera-outline" size={22} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
             <View>
-              <Text style={styles.btnScannerTitle}>Scan / Upload Photo</Text>
-              <Text style={styles.btnScannerSub}>Gemini AI Vision Parsing</Text>
+              <Text
+                style={[
+                  styles.btnScannerTitle,
+                  { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                ]}
+              >
+                Scan / Upload Photo
+              </Text>
+              <Text
+                style={[
+                  styles.btnScannerSub,
+                  { color: theme.isDark ? '#1F3A2A' : '#E2E8F0' },
+                ]}
+              >
+                Gemini AI Vision Parsing
+              </Text>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.btnQuickAdd}
+            style={[
+              styles.btnQuickAdd,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                ...theme.shadowButton,
+              },
+            ]}
             onPress={() => handleOpenQuickAdd('LUNCH')}
             activeOpacity={0.8}
           >
-            <Text style={styles.btnQuickAddIcon}>🔍</Text>
+            <Ionicons name="search-outline" size={20} color={theme.isDark ? theme.accentGold : theme.primary} />
             <View>
-              <Text style={styles.btnQuickAddTitle}>Quick Add Meal</Text>
-              <Text style={styles.btnQuickAddSub}>Manual Entry / Search</Text>
+              <Text
+                style={[
+                  styles.btnQuickAddTitle,
+                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+              >
+                Quick Add Meal
+              </Text>
+              <Text style={[styles.btnQuickAddSub, { color: theme.textSecondary }]}>
+                Manual Entry / Search
+              </Text>
             </View>
           </TouchableOpacity>
         </View>
 
         {/* CATEGORIZED MEAL TIME SECTIONS */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Today's Meals</Text>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Today's Meals</Text>
 
           {mealCategories.map((cat) => {
             const catMeals = todayMeals.filter((m) => m.category === cat.type);
             const catCalories = catMeals.reduce((sum, m) => sum + (m.totalCalories || 0), 0);
 
             return (
-              <View key={cat.type} style={styles.categoryCard}>
+              <View
+                key={cat.type}
+                style={[
+                  styles.categoryCard,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                {/* Category Header Row */}
                 <View style={styles.categoryCardHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={styles.categoryIcon}>{cat.icon}</Text>
-                    <Text style={styles.categoryTitle}>{cat.title}</Text>
-                    <Text style={styles.categoryKcalText}>{catCalories} kcal</Text>
+                    <Ionicons
+                      name={cat.iconName}
+                      size={18}
+                      color={theme.isDark ? theme.accentGold : theme.primary}
+                    />
+                    <Text style={[styles.categoryTitle, { color: theme.text }]}>{cat.title}</Text>
+                    <Text
+                      style={[
+                        styles.categoryKcalText,
+                        { color: theme.isDark ? theme.accentGold : theme.primary },
+                      ]}
+                    >
+                      {catCalories} kcal
+                    </Text>
                   </View>
-
-                  <TouchableOpacity
-                    style={styles.categoryAddBtn}
-                    onPress={() => handleOpenQuickAdd(cat.type)}
-                  >
-                    <Text style={styles.categoryAddBtnText}>+ Add</Text>
-                  </TouchableOpacity>
                 </View>
 
                 {catMeals.length === 0 ? (
-                  <Text style={styles.categoryEmptyText}>No {cat.title.toLowerCase()} logged</Text>
+                  <Text style={[styles.categoryEmptyText, { color: theme.textMuted }]}>
+                    No {cat.title.toLowerCase()} logged
+                  </Text>
                 ) : (
-                  catMeals.map((meal) => (
-                    <View key={meal.id} style={styles.mealItemBox}>
-                      <View style={styles.mealItemHeader}>
-                        <Text style={styles.mealDishName}>{meal.dishName}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text style={styles.mealKcalVal}>{meal.totalCalories} kcal</Text>
-                          <TouchableOpacity onPress={() => handleDelete(meal.id, meal.dishName)}>
-                            <Text style={styles.deleteText}>🗑️</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                  catMeals.map((meal) => {
+                    const isGenericCategoryName =
+                      meal.dishName.trim().toLowerCase() === cat.title.toLowerCase() ||
+                      meal.dishName.trim().toLowerCase() === cat.type.toLowerCase();
 
-                      {meal.items && meal.items.length > 0 && (
-                        <View style={styles.itemsSubList}>
-                          {meal.items.map((item, iIdx) => (
-                            <Text key={iIdx} style={styles.itemSubText}>
-                              • {item.name}{' '}
-                              <Text style={styles.itemSubQty}>({item.quantity})</Text>
-                            </Text>
-                          ))}
+                    // If meal has items breakdown and dishName is just the category name:
+                    if (isGenericCategoryName && meal.items && meal.items.length > 0) {
+                      return meal.items.map((item, itemIdx) => (
+                        <View
+                          key={item.id || `${meal.id}_${itemIdx}`}
+                          style={[
+                            styles.mealItemBox,
+                            {
+                              backgroundColor: theme.card,
+                              borderColor: theme.border,
+                            },
+                          ]}
+                        >
+                          <View style={styles.mealItemHeader}>
+                            <Text style={[styles.mealDishName, { color: theme.text }]}>{item.name}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text
+                                style={[
+                                  styles.mealKcalVal,
+                                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                                ]}
+                              >
+                                {item.calories} kcal
+                              </Text>
+                              {itemIdx === 0 && (
+                                <TouchableOpacity onPress={() => handleDelete(meal.id, item.name)}>
+                                  <Ionicons name="trash-outline" size={16} color={theme.textMuted} />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
+
+                          <Text style={[styles.itemSubText, { color: theme.textSecondary }]}>
+                            {item.quantity} • P: {item.proteinG}g | C: {item.carbsG}g | F: {item.fatG}g
+                          </Text>
                         </View>
-                      )}
-                    </View>
-                  ))
+                      ));
+                    }
+
+                    // Render meal entry with distinct dishName
+                    return (
+                      <View
+                        key={meal.id}
+                        style={[
+                          styles.mealItemBox,
+                          {
+                            backgroundColor: theme.card,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                      >
+                        <View style={styles.mealItemHeader}>
+                          <Text style={[styles.mealDishName, { color: theme.text }]}>{meal.dishName}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text
+                              style={[
+                                styles.mealKcalVal,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                            >
+                              {meal.totalCalories} kcal
+                            </Text>
+                            <TouchableOpacity onPress={() => handleDelete(meal.id, meal.dishName)}>
+                              <Ionicons name="trash-outline" size={16} color={theme.textMuted} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        <Text style={[styles.itemSubText, { color: theme.textSecondary }]}>
+                          P: {meal.totalProteinG}g | C: {meal.totalCarbsG}g | F: {meal.totalFatG}g
+                        </Text>
+                      </View>
+                    );
+                  })
                 )}
               </View>
             );
@@ -387,8 +416,17 @@ export default function NutritionScreen() {
         </View>
 
         {/* MEAL HISTORY */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Meal History</Text>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Meal History</Text>
 
           <View style={styles.historyList}>
             {samplePastSevenDaysHistory.map((day, idx) => {
@@ -398,65 +436,143 @@ export default function NutritionScreen() {
                 day.totalCalories >= day.targetCalories - 200;
 
               return (
-                <View key={idx} style={styles.historyCard}>
+                <View
+                  key={idx}
+                  style={[
+                    styles.historyCard,
+                    {
+                      backgroundColor: theme.cardInner,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
                   {/* Day Summary Header Row */}
                   <View style={styles.historyCardHeader}>
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <Text style={styles.historyDateTitle}>{day.dateLabel}</Text>
+                        <Text style={[styles.historyDateTitle, { color: theme.text }]}>{day.dateLabel}</Text>
                         <View
                           style={[
                             styles.historyTargetBadge,
-                            isTargetMet ? styles.targetMet : styles.targetOff,
+                            {
+                              backgroundColor: isTargetMet
+                                ? theme.isDark
+                                  ? theme.badgeBg
+                                  : '#E8F5E9'
+                                : theme.isDark
+                                ? '#3B1A08'
+                                : '#FEF3C7',
+                              borderColor: isTargetMet ? theme.success : theme.warning,
+                            },
                           ]}
                         >
                           <Text
                             style={[
                               styles.historyTargetText,
-                              isTargetMet ? { color: '#10B981' } : { color: '#F59E0B' },
+                              { color: isTargetMet ? theme.success : theme.warning },
                             ]}
                           >
-                            {isTargetMet ? '🎯 On Target' : '⚠️ Over Target'}
+                            {isTargetMet ? 'On Target' : 'Over Target'}
                           </Text>
                         </View>
                       </View>
 
-                      <Text style={styles.historyKcalText}>
-                        {day.totalCalories} / {day.targetCalories} kcal •{' '}
-                        <Text style={styles.historyMacroSub}>
-                          🥩 {day.proteinG}g P • 🍞 {day.carbsG}g C • 🥑 {day.fatG}g F
-                        </Text>
+                      <Text
+                        style={[
+                          styles.historyKcalText,
+                          { color: theme.isDark ? theme.accentGold : theme.primary },
+                        ]}
+                      >
+                        {day.totalCalories} / {day.targetCalories} kcal
+                      </Text>
+                      <Text style={[styles.historyMacroSub, { color: theme.textSecondary }]}>
+                        P: {day.proteinG}g • C: {day.carbsG}g • F: {day.fatG}g
                       </Text>
                     </View>
 
                     <TouchableOpacity
-                      style={[styles.historyToggleBtn, isExpanded && styles.historyToggleBtnActive]}
+                      style={[
+                        styles.historyToggleBtn,
+                        {
+                          backgroundColor: isExpanded
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.cardAlt,
+                          borderColor: isExpanded
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.border,
+                        },
+                      ]}
                       onPress={() => toggleHistoryDay(day.dateLabel)}
                       activeOpacity={0.8}
                     >
-                      <Text
-                        style={[
-                          styles.historyToggleBtnText,
-                          isExpanded && styles.historyToggleBtnTextActive,
-                        ]}
-                      >
-                        {isExpanded ? '▲ Hide' : `▼ ${day.meals.length} Meals`}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons
+                          name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                          size={12}
+                          color={
+                            isExpanded
+                              ? theme.isDark
+                                ? '#0A1A12'
+                                : '#FFFFFF'
+                              : theme.textSecondary
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.historyToggleBtnText,
+                            {
+                              color: isExpanded
+                                ? theme.isDark
+                                  ? '#0A1A12'
+                                  : '#FFFFFF'
+                                : theme.textSecondary,
+                            },
+                          ]}
+                        >
+                          {isExpanded ? 'Hide' : `${day.meals.length} Meals`}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                   </View>
 
                   {/* Expanded Meals List */}
                   {isExpanded && (
                     <View style={styles.historyExpandedContent}>
-                      <View style={styles.historyDivider} />
-
+                      <View style={[styles.historyDivider, { backgroundColor: theme.border }]} />
                       {day.meals.map((meal, mIdx) => (
-                        <View key={mIdx} style={styles.historyMealRow}>
+                        <View
+                          key={mIdx}
+                          style={[
+                            styles.historyMealRow,
+                            {
+                              backgroundColor: theme.card,
+                              borderColor: theme.border,
+                            },
+                          ]}
+                        >
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.historyMealCategory}>[{meal.category.toUpperCase()}]</Text>
-                            <Text style={styles.historyMealName}>{meal.name}</Text>
+                            <Text
+                              style={[
+                                styles.historyMealCategory,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                            >
+                              {meal.category.toUpperCase()}
+                            </Text>
+                            <Text style={[styles.historyMealName, { color: theme.text }]}>{meal.name}</Text>
                           </View>
-                          <Text style={styles.historyMealKcal}>{meal.kcal} kcal</Text>
+                          <Text
+                            style={[
+                              styles.historyMealKcal,
+                              { color: theme.isDark ? theme.accentGold : theme.primary },
+                            ]}
+                          >
+                            {meal.kcal} kcal
+                          </Text>
                         </View>
                       ))}
                     </View>
@@ -468,7 +584,7 @@ export default function NutritionScreen() {
         </View>
       </ScrollView>
 
-      {/* QUICK ADD MEAL MODAL */}
+      {/* QUICK ADD MANUAL ENTRY MODAL */}
       <Modal
         visible={quickAddModalVisible}
         animationType="slide"
@@ -476,52 +592,110 @@ export default function NutritionScreen() {
         onRequestClose={() => setQuickAddModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Quick Add Meal Log</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Quick Add Meal Entry</Text>
               <TouchableOpacity onPress={() => setQuickAddModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Meal Category</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Select Category</Text>
             <View style={styles.catPickerRow}>
-              {(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACKS'] as const).map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[styles.catPill, selectedCategory === cat && styles.catPillActive]}
-                  onPress={() => setSelectedCategory(cat)}
-                >
-                  <Text style={[styles.catPillText, selectedCategory === cat && styles.catPillTextActive]}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACKS'] as const).map((cat) => {
+                const isSelected = selectedCategory === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      styles.catPill,
+                      {
+                        backgroundColor: isSelected
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.cardInner,
+                        borderColor: isSelected
+                          ? theme.isDark
+                            ? theme.accentGold
+                            : theme.primary
+                          : theme.border,
+                      },
+                    ]}
+                    onPress={() => setSelectedCategory(cat)}
+                  >
+                    <Text
+                      style={[
+                        styles.catPillText,
+                        {
+                          color: isSelected
+                            ? theme.isDark
+                              ? '#0A1A12'
+                              : '#FFFFFF'
+                            : theme.textSecondary,
+                        },
+                      ]}
+                    >
+                      {cat.substring(0, 4)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            <Text style={styles.inputLabel}>Dish Title / Item Name</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Dish Title / Item Name</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
               value={dishTitleInput}
               placeholder="e.g. Chicken Biryani / Protein Shake"
-              placeholderTextColor="#64748B"
+              placeholderTextColor={theme.textMuted}
               onChangeText={setDishTitleInput}
             />
 
             <View style={styles.macroGrid}>
               <View style={styles.macroCol}>
-                <Text style={styles.inputLabel}>Calories (kcal)</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Calories (kcal)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
                   value={caloriesInput}
                   keyboardType="numeric"
                   onChangeText={setCaloriesInput}
                 />
               </View>
               <View style={styles.macroCol}>
-                <Text style={styles.inputLabel}>Protein (g)</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Protein (g)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
                   value={proteinInput}
                   keyboardType="numeric"
                   onChangeText={setProteinInput}
@@ -531,18 +705,32 @@ export default function NutritionScreen() {
 
             <View style={styles.macroGrid}>
               <View style={styles.macroCol}>
-                <Text style={styles.inputLabel}>Carbs (g)</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Carbs (g)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
                   value={carbsInput}
                   keyboardType="numeric"
                   onChangeText={setCarbsInput}
                 />
               </View>
               <View style={styles.macroCol}>
-                <Text style={styles.inputLabel}>Fat (g)</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Fat (g)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
                   value={fatInput}
                   keyboardType="numeric"
                   onChangeText={setFatInput}
@@ -552,14 +740,35 @@ export default function NutritionScreen() {
 
             <View style={styles.modalActionRow}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
+                style={[
+                  styles.modalCancelBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
                 onPress={() => setQuickAddModalVisible(false)}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveQuickAdd}>
-                <Text style={styles.modalSaveText}>Log Meal 🥗</Text>
+              <TouchableOpacity
+                style={[
+                  styles.modalSaveBtn,
+                  {
+                    backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+                onPress={handleSaveQuickAdd}
+              >
+                <Text
+                  style={[
+                    styles.modalSaveText,
+                    { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                  ]}
+                >
+                  Log Meal
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -574,235 +783,109 @@ export default function NutritionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 40,
-  },
-
-  heroMacroCard: {
-    backgroundColor: '#091512',
-    borderRadius: 22,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#10B98133',
-  },
-  heroTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   macroCol: {
     flex: 1,
   },
-  energyFlowHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-    gap: 8,
-  },
-  energyFlowSub: {
-    color: '#94A3B8',
-    fontSize: 11.5,
-    marginTop: 2,
-  },
-  remainingPillBadge: {
-    backgroundColor: '#06110D',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#EAB30844',
-  },
-  remainingPillText: {
-    color: '#EAB308',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  segmentedProgressBarTrack: {
-    flexDirection: 'row',
-    height: 14,
-    backgroundColor: '#1E293B',
-    borderRadius: 7,
-    overflow: 'hidden',
-    marginBottom: 16,
-    gap: 2,
-  },
-  segmentedFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  segmentedFillEmpty: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  macroPillGrid: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  macroPillCard: {
-    flex: 1,
-    backgroundColor: '#06110D',
-    borderRadius: 14,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#10B98122',
-  },
-  macroPillHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginBottom: 4,
-  },
-  macroDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  macroPillLabel: {
-    color: '#94A3B8',
-    fontSize: 9.5,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  macroPillVal: {
-    color: '#F8FAFC',
-    fontSize: 12.5,
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
-  },
-  macroPillSub: {
-    color: '#64748B',
-    fontSize: 9.5,
-    marginTop: 2,
-  },
-
   actionRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
     marginBottom: 16,
   },
   btnScanner: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#10B981',
     borderRadius: 16,
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     gap: 10,
   },
-  btnScannerIcon: {
-    fontSize: 24,
-  },
   btnScannerTitle: {
-    color: '#064E3B',
-    fontSize: 12.5,
+    fontSize: 13.5,
     fontWeight: 'bold',
   },
   btnScannerSub: {
-    color: '#064E3B',
-    fontSize: 9.5,
-    opacity: 0.8,
+    fontSize: 10,
+    marginTop: 2,
   },
   btnQuickAdd: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#091512',
     borderRadius: 16,
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     gap: 10,
     borderWidth: 1,
-    borderColor: '#10B981',
-  },
-  btnQuickAddIcon: {
-    fontSize: 22,
   },
   btnQuickAddTitle: {
-    color: '#10B981',
-    fontSize: 12.5,
+    fontSize: 13.5,
     fontWeight: 'bold',
   },
   btnQuickAddSub: {
-    color: '#94A3B8',
-    fontSize: 9.5,
+    fontSize: 10,
+    marginTop: 2,
   },
-
   sectionCard: {
-    backgroundColor: '#171E2D',
-    borderRadius: 22,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   sectionTitle: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 14,
   },
-
   categoryCard: {
-    backgroundColor: '#091512',
     borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   categoryCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  categoryIcon: {
-    fontSize: 16,
+    marginBottom: 10,
   },
   categoryTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
   },
   categoryKcalText: {
-    color: '#10B981',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
   categoryAddBtn: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   categoryAddBtnText: {
-    color: '#CBD5E1',
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: 'bold',
   },
   categoryEmptyText: {
-    color: '#64748B',
-    fontSize: 11,
+    fontSize: 12,
     fontStyle: 'italic',
+    paddingVertical: 4,
   },
-
   historyList: {
     gap: 10,
   },
   historyCard: {
-    backgroundColor: '#091512',
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#10B98122',
   },
   historyCardHeader: {
     flexDirection: 'row',
@@ -810,131 +893,94 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   historyDateTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
   },
   historyTargetBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
     borderWidth: 1,
   },
-  targetMet: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
-  },
-  targetOff: {
-    backgroundColor: '#451A03',
-    borderColor: '#F59E0B',
-  },
   historyTargetText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   historyKcalText: {
-    color: '#A7F3D0',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
     fontFamily: 'monospace',
     marginTop: 4,
   },
   historyMacroSub: {
-    color: '#94A3B8',
-    fontSize: 10.5,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 3,
   },
   historyToggleBtn: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  historyToggleBtnActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
   },
   historyToggleBtnText: {
-    color: '#CBD5E1',
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: 'bold',
   },
-  historyToggleBtnTextActive: {
-    color: '#10B981',
-  },
   historyExpandedContent: {
-    marginTop: 10,
+    marginTop: 12,
   },
   historyDivider: {
     height: 1,
-    backgroundColor: '#10B98122',
     marginBottom: 10,
   },
   historyMealRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0C1E19',
-    padding: 8,
-    borderRadius: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
     marginBottom: 6,
   },
   historyMealCategory: {
-    color: '#10B981',
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   historyMealName: {
-    color: '#F8FAFC',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   historyMealKcal: {
-    color: '#A7F3D0',
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
-
   mealItemBox: {
-    backgroundColor: '#0C1E19',
-    borderRadius: 10,
-    padding: 8,
-    marginTop: 6,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
   },
   mealItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
   mealDishName: {
-    color: '#F8FAFC',
-    fontSize: 12.5,
+    fontSize: 15,
     fontWeight: 'bold',
   },
   mealKcalVal: {
-    color: '#A7F3D0',
-    fontSize: 11.5,
+    fontSize: 14,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
-  deleteText: {
-    fontSize: 12,
-  },
-  itemsSubList: {
-    marginTop: 4,
-  },
   itemSubText: {
-    color: '#94A3B8',
-    fontSize: 10.5,
+    fontSize: 12,
+    fontWeight: '500',
   },
-  itemSubQty: {
-    color: '#64748B',
-    fontSize: 9.5,
-  },
-
-  /* MODAL STYLES */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -942,11 +988,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modalContent: {
-    backgroundColor: '#0F172A',
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#10B98133',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -955,17 +999,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  modalCloseText: {
-    color: '#94A3B8',
     fontSize: 16,
     fontWeight: 'bold',
   },
   inputLabel: {
-    color: '#94A3B8',
     fontSize: 11.5,
     fontWeight: 'bold',
     marginBottom: 4,
@@ -977,35 +1014,22 @@ const styles = StyleSheet.create({
   },
   catPill: {
     flex: 1,
-    backgroundColor: '#1E293B',
     paddingVertical: 6,
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  catPillActive: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
   },
   catPillText: {
-    color: '#94A3B8',
     fontSize: 9.5,
     fontWeight: 'bold',
   },
-  catPillTextActive: {
-    color: '#10B981',
-  },
   input: {
-    backgroundColor: '#1E293B',
-    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: 'bold',
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
     marginBottom: 12,
   },
   macroGrid: {
@@ -1019,25 +1043,22 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    backgroundColor: '#1E293B',
     paddingVertical: 10,
     borderRadius: 10,
+    borderWidth: 1,
     alignItems: 'center',
   },
   modalCancelText: {
-    color: '#94A3B8',
     fontSize: 13,
     fontWeight: 'bold',
   },
   modalSaveBtn: {
     flex: 1.5,
-    backgroundColor: '#10B981',
     paddingVertical: 10,
     borderRadius: 10,
     alignItems: 'center',
   },
   modalSaveText: {
-    color: '#064E3B',
     fontSize: 13,
     fontWeight: 'bold',
   },

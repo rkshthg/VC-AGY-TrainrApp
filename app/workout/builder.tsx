@@ -11,9 +11,11 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useWorkoutStore, PlanExercise } from '../../store/workoutStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTrainerStore } from '../../store/trainerStore';
+import { useTheme } from '../../lib/theme';
 
 interface BuilderDay {
   id: string;
@@ -24,13 +26,14 @@ interface BuilderDay {
 
 export default function WorkoutBuilderScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ planId?: string }>();
+  const params = useLocalSearchParams<{ planId?: string; editPlanId?: string; assignPlanId?: string }>();
   const role = useAuthStore((state) => state.role);
   const clients = useTrainerStore((state) => state.clients);
   const { exerciseCatalog, savedPlans, createPlan, updatePlan } = useWorkoutStore();
+  const theme = useTheme();
 
-  // Check if editing existing plan
-  const existingPlan = params.planId ? savedPlans.find((p) => p.id === params.planId) : null;
+  const targetPlanId = params.editPlanId || params.assignPlanId || params.planId;
+  const existingPlan = targetPlanId ? savedPlans.find((p) => p.id === targetPlanId) : null;
 
   const [title, setTitle] = useState(existingPlan?.title || '');
   const [description, setDescription] = useState(
@@ -118,45 +121,51 @@ export default function WorkoutBuilderScreen() {
         return {
           ...d,
           isRestDay: isRest,
-          // Clear exercises if marked as Rest Day
-          exercises: isRest ? [] : d.exercises,
+          dayName: isRest
+            ? d.dayName.includes(':')
+              ? `${d.dayName.split(':')[0]}: Rest & Recovery`
+              : 'Rest & Recovery'
+            : d.dayName.includes(':')
+            ? `${d.dayName.split(':')[0]}: Training Split`
+            : 'Training Split',
         };
       })
     );
   };
 
   const handleUpdateDayName = (dayId: string, name: string) => {
-    setDays(days.map((d) => (d.id === dayId ? { ...d, dayName: name } : d)));
+    setDays(
+      days.map((d) => (d.id === dayId ? { ...d, dayName: name } : d))
+    );
   };
 
-  // Exercise Handlers
-  const handleAddExerciseToDay = (exerciseDef: { id: string; name: string }) => {
+  const handleOpenExercisePicker = (dayId: string) => {
+    setActiveDayIdForPicker(dayId);
+    setExerciseSearch('');
+  };
+
+  const handleAddExerciseToDay = (catalogEx: typeof exerciseCatalog[0]) => {
     if (!activeDayIdForPicker) return;
+
+    const newPlanExercise: PlanExercise = {
+      exerciseId: catalogEx.id,
+      name: catalogEx.name,
+      targetSets: 3,
+      targetReps: '8-10',
+      targetWeightKg: 50,
+    };
 
     setDays(
       days.map((d) => {
         if (d.id !== activeDayIdForPicker) return d;
-        const exists = d.exercises.some((e) => e.exerciseId === exerciseDef.id);
-        if (exists) return d;
-
         return {
           ...d,
-          exercises: [
-            ...d.exercises,
-            {
-              exerciseId: exerciseDef.id,
-              name: exerciseDef.name,
-              targetSets: 3,
-              targetReps: '8-12',
-              targetWeightKg: 20,
-            },
-          ],
+          exercises: [...d.exercises, newPlanExercise],
         };
       })
     );
 
     setActiveDayIdForPicker(null);
-    setExerciseSearch('');
   };
 
   const handleRemoveExercise = (dayId: string, exerciseId: string) => {
@@ -165,7 +174,7 @@ export default function WorkoutBuilderScreen() {
         if (d.id !== dayId) return d;
         return {
           ...d,
-          exercises: d.exercises.filter((e) => e.exerciseId !== exerciseId),
+          exercises: d.exercises.filter((ex) => ex.exerciseId !== exerciseId),
         };
       })
     );
@@ -174,7 +183,7 @@ export default function WorkoutBuilderScreen() {
   const handleUpdateExerciseParam = (
     dayId: string,
     exerciseId: string,
-    field: 'targetSets' | 'targetReps' | 'targetWeightKg',
+    field: keyof PlanExercise,
     value: any
   ) => {
     setDays(
@@ -182,16 +191,14 @@ export default function WorkoutBuilderScreen() {
         if (d.id !== dayId) return d;
         return {
           ...d,
-          exercises: d.exercises.map((ex) => {
-            if (ex.exerciseId !== exerciseId) return ex;
-            return { ...ex, [field]: value };
-          }),
+          exercises: d.exercises.map((ex) =>
+            ex.exerciseId === exerciseId ? { ...ex, [field]: value } : ex
+          ),
         };
       })
     );
   };
 
-  // Save Routine Handler
   const handleSaveRoutine = () => {
     if (!title.trim()) {
       Alert.alert('Missing Title', 'Please enter a name for this workout routine.');
@@ -244,47 +251,80 @@ export default function WorkoutBuilderScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>
             {existingPlan ? 'Edit Workout Routine' : 'Build Workout Routine'}
           </Text>
-          <Text style={styles.headerSub}>Plan daily split, exercises, sets & recovery days</Text>
+          <Text style={[styles.headerSub, { color: theme.textSecondary }]}>
+            Plan daily split, exercises, sets & recovery days
+          </Text>
         </View>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>✕</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[
+            styles.closeBtn,
+            { backgroundColor: theme.cardInner, borderColor: theme.border },
+          ]}
+        >
+          <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Routine Information Header Card */}
-        <View style={styles.infoCard}>
-          <Text style={styles.inputLabel}>ROUTINE NAME</Text>
+        <View
+          style={[
+            styles.infoCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              ...theme.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>ROUTINE NAME</Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+                color: theme.text,
+              },
+            ]}
             value={title}
             onChangeText={setTitle}
             placeholder="e.g. Hypertrophy 5-Day Push/Pull/Legs"
-            placeholderTextColor="#64748B"
+            placeholderTextColor={theme.textMuted}
           />
 
-          <Text style={styles.inputLabel}>SHORT DESCRIPTION</Text>
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>SHORT DESCRIPTION</Text>
           <TextInput
-            style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+                color: theme.text,
+                height: 60,
+                textAlignVertical: 'top',
+              },
+            ]}
             value={description}
             onChangeText={setDescription}
             placeholder="Brief routine description or goals..."
-            placeholderTextColor="#64748B"
+            placeholderTextColor={theme.textMuted}
             multiline
           />
 
           {/* Optional Assign To Client Section for Trainers */}
           {role === 'TRAINER' && (
-            <View style={styles.assignSection}>
-              <Text style={styles.inputLabel}>ASSIGN TO CLIENT (OPTIONAL)</Text>
-              <Text style={styles.assignSectionSub}>
+            <View style={[styles.assignSection, { borderTopColor: theme.border }]}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>ASSIGN TO CLIENT (OPTIONAL)</Text>
+              <Text style={[styles.assignSectionSub, { color: theme.textMuted }]}>
                 Select client(s) to assign this routine directly to their saved routines, or leave unselected to save to your Trainer library.
               </Text>
 
@@ -294,7 +334,21 @@ export default function WorkoutBuilderScreen() {
                   return (
                     <TouchableOpacity
                       key={client.clientId}
-                      style={[styles.clientChip, isSelected && styles.clientChipSelected]}
+                      style={[
+                        styles.clientChip,
+                        {
+                          backgroundColor: isSelected
+                            ? theme.isDark
+                              ? theme.badgeBg
+                              : '#E8F5E9'
+                            : theme.cardInner,
+                          borderColor: isSelected
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.border,
+                        },
+                      ]}
                       onPress={() => {
                         if (isSelected) {
                           setSelectedClientIds(
@@ -309,7 +363,14 @@ export default function WorkoutBuilderScreen() {
                       <Text
                         style={[
                           styles.clientChipText,
-                          isSelected && styles.clientChipTextSelected,
+                          {
+                            color: isSelected
+                              ? theme.isDark
+                                ? theme.accentGold
+                                : theme.primary
+                              : theme.textSecondary,
+                            fontWeight: isSelected ? 'bold' : '600',
+                          },
                         ]}
                       >
                         {isSelected ? '✓ ' : '+ '}
@@ -325,20 +386,53 @@ export default function WorkoutBuilderScreen() {
 
         {/* Days List Section Header */}
         <View style={styles.daysListHeaderRow}>
-          <Text style={styles.sectionTitle}>Training Days ({days.length} Days)</Text>
-          <TouchableOpacity style={styles.addDayTopBtn} onPress={handleAddDay}>
-            <Text style={styles.addDayTopBtnText}>+ Add Day</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Training Days ({days.length} Days)</Text>
+          <TouchableOpacity
+            style={[
+              styles.addDayTopBtn,
+              {
+                backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                borderColor: theme.isDark ? theme.accentGold : theme.primary,
+              },
+            ]}
+            onPress={handleAddDay}
+          >
+            <Text
+              style={[
+                styles.addDayTopBtnText,
+                { color: theme.isDark ? theme.accentGold : theme.primary },
+              ]}
+            >
+              + Add Day
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Vertical List of Day Cards */}
-        {days.map((day, dayIdx) => (
-          <View key={day.id} style={styles.dayCard}>
+        {days.map((day) => (
+          <View
+            key={day.id}
+            style={[
+              styles.dayCard,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
             {/* Day Header Row with Rest Day Slider Switch */}
             <View style={styles.dayHeaderRow}>
               <View style={styles.dayTitleBox}>
                 <TextInput
-                  style={styles.dayNameInput}
+                  style={[
+                    styles.dayNameInput,
+                    {
+                      backgroundColor: theme.cardInner,
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
                   value={day.dayName}
                   onChangeText={(val) => handleUpdateDayName(day.id, val)}
                 />
@@ -346,15 +440,28 @@ export default function WorkoutBuilderScreen() {
 
               <View style={styles.dayRightHeaderControls}>
                 {/* Rest Day Slider Switch */}
-                <View style={styles.restDaySwitchBox}>
-                  <Text style={[styles.restDayLabel, day.isRestDay && styles.restDayLabelActive]}>
+                <View
+                  style={[
+                    styles.restDaySwitchBox,
+                    { backgroundColor: theme.cardInner, borderColor: theme.border },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.restDayLabel,
+                      { color: day.isRestDay ? (theme.isDark ? theme.accentGold : theme.primary) : theme.textMuted },
+                    ]}
+                  >
                     Rest Day
                   </Text>
                   <Switch
                     value={day.isRestDay}
                     onValueChange={(val) => handleToggleRestDay(day.id, val)}
-                    trackColor={{ false: '#334155', true: '#10B981' }}
-                    thumbColor={day.isRestDay ? '#FFFFFF' : '#94A3B8'}
+                    trackColor={{
+                      false: theme.cardAlt,
+                      true: theme.isDark ? theme.accentGold : theme.primary,
+                    }}
+                    thumbColor={day.isRestDay ? '#FFFFFF' : theme.textMuted}
                   />
                 </View>
 
@@ -362,9 +469,9 @@ export default function WorkoutBuilderScreen() {
                 {days.length > 1 && (
                   <TouchableOpacity
                     onPress={() => handleRemoveDay(day.id)}
-                    style={styles.removeDayBtn}
+                    style={[styles.removeDayBtn, { backgroundColor: theme.cardInner }]}
                   >
-                    <Text style={styles.removeDayBtnText}>✕</Text>
+                    <Ionicons name="close-outline" size={16} color={theme.danger} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -372,11 +479,26 @@ export default function WorkoutBuilderScreen() {
 
             {/* Day Content: Rest Day Banner OR Exercise Configuration List */}
             {day.isRestDay ? (
-              <View style={styles.restDayCardBanner}>
-                <Text style={{ fontSize: 26 }}>😴</Text>
+              <View
+                style={[
+                  styles.restDayCardBanner,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+              >
+                <Ionicons name="moon-outline" size={24} color={theme.isDark ? theme.accentGold : theme.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.restDayBannerTitle}>Rest & Muscle Recovery Day</Text>
-                  <Text style={styles.restDayBannerSub}>
+                  <Text
+                    style={[
+                      styles.restDayBannerTitle,
+                      { color: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    Rest & Muscle Recovery Day
+                  </Text>
+                  <Text style={[styles.restDayBannerSub, { color: theme.textSecondary }]}>
                     No heavy strength exercises scheduled. Focus on active recovery, stretching, and hydration.
                   </Text>
                 </View>
@@ -384,57 +506,89 @@ export default function WorkoutBuilderScreen() {
             ) : (
               <View style={styles.exercisesContainer}>
                 {day.exercises.length === 0 ? (
-                  <Text style={styles.noExercisesText}>
+                  <Text style={[styles.noExercisesText, { color: theme.textMuted }]}>
                     No exercises added for this day yet. Tap below to add exercises from catalog!
                   </Text>
                 ) : (
                   day.exercises.map((ex) => (
-                    <View key={ex.exerciseId} style={styles.exerciseCardItem}>
+                    <View
+                      key={ex.exerciseId}
+                      style={[
+                        styles.exerciseCardItem,
+                        { backgroundColor: theme.cardInner, borderColor: theme.border },
+                      ]}
+                    >
                       <View style={styles.exerciseHeader}>
-                        <Text style={styles.exerciseNameText}>🏋️ {ex.name}</Text>
+                        <Text style={[styles.exerciseNameText, { color: theme.text }]}>{ex.name}</Text>
                         <TouchableOpacity
                           onPress={() => handleRemoveExercise(day.id, ex.exerciseId)}
                         >
-                          <Text style={styles.removeExText}>Remove</Text>
+                          <Text style={[styles.removeExText, { color: theme.danger }]}>Remove</Text>
                         </TouchableOpacity>
                       </View>
 
-                      {/* Sets / Reps / Weight Input Row */}
+                      {/* Configurable Parameters (Sets, Reps, Weight) */}
                       <View style={styles.paramInputRow}>
                         <View style={styles.paramBox}>
-                          <Text style={styles.paramLabel}>SETS</Text>
+                          <Text style={[styles.paramLabel, { color: theme.textMuted }]}>SETS</Text>
                           <TextInput
-                            style={styles.paramInput}
+                            style={[
+                              styles.paramInput,
+                              {
+                                backgroundColor: theme.cardAlt,
+                                borderColor: theme.border,
+                                color: theme.text,
+                              },
+                            ]}
+                            value={String(ex.targetSets || 3)}
                             keyboardType="numeric"
-                            value={String(ex.targetSets)}
                             onChangeText={(val) =>
                               handleUpdateExerciseParam(
                                 day.id,
                                 ex.exerciseId,
                                 'targetSets',
-                                parseInt(val) || 1
+                                parseInt(val) || 3
                               )
                             }
                           />
                         </View>
 
                         <View style={styles.paramBox}>
-                          <Text style={styles.paramLabel}>REPS</Text>
+                          <Text style={[styles.paramLabel, { color: theme.textMuted }]}>REPS RANGE</Text>
                           <TextInput
-                            style={styles.paramInput}
-                            value={ex.targetReps}
+                            style={[
+                              styles.paramInput,
+                              {
+                                backgroundColor: theme.cardAlt,
+                                borderColor: theme.border,
+                                color: theme.text,
+                              },
+                            ]}
+                            value={String(ex.targetReps || '8-10')}
                             onChangeText={(val) =>
-                              handleUpdateExerciseParam(day.id, ex.exerciseId, 'targetReps', val)
+                              handleUpdateExerciseParam(
+                                day.id,
+                                ex.exerciseId,
+                                'targetReps',
+                                val
+                              )
                             }
                           />
                         </View>
 
                         <View style={styles.paramBox}>
-                          <Text style={styles.paramLabel}>TARGET (KG)</Text>
+                          <Text style={[styles.paramLabel, { color: theme.textMuted }]}>TARGET (KG)</Text>
                           <TextInput
-                            style={styles.paramInput}
+                            style={[
+                              styles.paramInput,
+                              {
+                                backgroundColor: theme.cardAlt,
+                                borderColor: theme.border,
+                                color: theme.text,
+                              },
+                            ]}
+                            value={String(ex.targetWeightKg || 50)}
                             keyboardType="numeric"
-                            value={String(ex.targetWeightKg || 0)}
                             onChangeText={(val) =>
                               handleUpdateExerciseParam(
                                 day.id,
@@ -452,68 +606,145 @@ export default function WorkoutBuilderScreen() {
 
                 {/* Add Exercise to Day Button */}
                 <TouchableOpacity
-                  style={styles.addExerciseToDayBtn}
-                  onPress={() => setActiveDayIdForPicker(day.id)}
+                  style={[
+                    styles.addExerciseToDayBtn,
+                    {
+                      backgroundColor: theme.cardInner,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                  onPress={() => handleOpenExercisePicker(day.id)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.addExerciseToDayBtnText}>+ Add Exercise from Catalog</Text>
+                  <Text
+                    style={[
+                      styles.addExerciseToDayBtnText,
+                      { color: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    + Add Exercise
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
           </View>
         ))}
 
-        {/* Global Add Day Button at Bottom of List */}
-        <TouchableOpacity style={styles.bottomAddDayBtn} onPress={handleAddDay} activeOpacity={0.85}>
-          <Text style={styles.bottomAddDayBtnText}>+ Add Training Day</Text>
+        {/* Bottom Full Add Day Button */}
+        <TouchableOpacity
+          style={[
+            styles.bottomAddDayBtn,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.isDark ? theme.accentGold : theme.primary,
+            },
+          ]}
+          onPress={handleAddDay}
+          activeOpacity={0.8}
+        >
+          <Text
+            style={[
+              styles.bottomAddDayBtnText,
+              { color: theme.isDark ? theme.accentGold : theme.primary },
+            ]}
+          >
+            + Add Another Day to Routine
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Save Routine Action CTA Bar */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.saveRoutineBtn} onPress={handleSaveRoutine} activeOpacity={0.85}>
-          <Text style={styles.saveRoutineBtnText}>Save Routine 🚀</Text>
+      {/* Fixed Sticky Save Routine Bottom Bar */}
+      <View style={[styles.bottomBar, { backgroundColor: theme.bg }]}>
+        <TouchableOpacity
+          style={[
+            styles.saveRoutineBtn,
+            {
+              backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+              ...theme.shadowButton,
+            },
+          ]}
+          onPress={handleSaveRoutine}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.saveRoutineBtnText,
+              { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+            ]}
+          >
+            {existingPlan ? 'Update Routine' : 'Save Routine'}
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Exercise Catalog Selector Modal */}
+      {/* EXERCISE CATALOG PICKER MODAL */}
       <Modal
-        visible={activeDayIdForPicker !== null}
+        visible={!!activeDayIdForPicker}
         animationType="slide"
         transparent={true}
         onRequestClose={() => setActiveDayIdForPicker(null)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Exercise</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Add Exercise to Day</Text>
               <TouchableOpacity onPress={() => setActiveDayIdForPicker(null)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close-outline" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <TextInput
-              style={styles.modalSearchInput}
+              style={[
+                styles.modalSearchInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              placeholder="Search exercise catalog..."
+              placeholderTextColor={theme.textMuted}
               value={exerciseSearch}
               onChangeText={setExerciseSearch}
-              placeholder="Search exercise catalog..."
-              placeholderTextColor="#64748B"
             />
 
-            <ScrollView style={{ maxHeight: 380 }}>
-              {filteredCatalog.map((ex) => (
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              {filteredCatalog.map((catalogEx) => (
                 <TouchableOpacity
-                  key={ex.id}
-                  style={styles.catalogItemRow}
-                  onPress={() => handleAddExerciseToDay(ex)}
+                  key={catalogEx.id}
+                  style={[
+                    styles.catalogItemRow,
+                    {
+                      backgroundColor: theme.cardInner,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                  onPress={() => handleAddExerciseToDay(catalogEx)}
+                  activeOpacity={0.7}
                 >
-                  <View>
-                    <Text style={styles.catalogItemName}>{ex.name}</Text>
-                    <Text style={styles.catalogItemSub}>
-                      {ex.target_muscle} • {ex.category}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.catalogItemName, { color: theme.text }]}>{catalogEx.name}</Text>
+                    <Text style={[styles.catalogItemSub, { color: theme.textSecondary }]}>
+                      Target: {catalogEx.target_muscle} • Category: {catalogEx.category}
                     </Text>
                   </View>
-                  <Text style={styles.catalogAddIcon}>➕</Text>
+                  <Text
+                    style={[
+                      styles.catalogAddIcon,
+                      { color: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    + Add
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -527,7 +758,6 @@ export default function WorkoutBuilderScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
     paddingHorizontal: 20,
     paddingTop: 50,
   },
@@ -538,12 +768,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   headerTitle: {
-    color: '#F8FAFC',
     fontSize: 20,
     fontWeight: 'bold',
   },
   headerSub: {
-    color: '#94A3B8',
     fontSize: 12,
     marginTop: 2,
   },
@@ -551,51 +779,42 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E293B',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#94A3B8',
     fontSize: 16,
   },
   scrollContent: {
     flex: 1,
   },
   infoCard: {
-    backgroundColor: '#171E2D',
     borderRadius: 20,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   inputLabel: {
-    color: '#94A3B8',
     fontSize: 10,
     fontWeight: 'bold',
     letterSpacing: 1,
     marginBottom: 6,
   },
   input: {
-    backgroundColor: '#0F172A',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    color: '#F8FAFC',
     fontSize: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   assignSection: {
     marginTop: 4,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#334155',
   },
   assignSectionSub: {
-    color: '#94A3B8',
     fontSize: 11,
     marginTop: -2,
     marginBottom: 10,
@@ -606,25 +825,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   clientChip: {
-    backgroundColor: '#0F172A',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  clientChipSelected: {
-    backgroundColor: '#064E3B',
-    borderColor: '#10B981',
   },
   clientChipText: {
-    color: '#94A3B8',
     fontSize: 12,
-    fontWeight: '600',
-  },
-  clientChipTextSelected: {
-    color: '#10B981',
-    fontWeight: 'bold',
   },
   daysListHeaderRow: {
     flexDirection: 'row',
@@ -633,30 +840,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
   },
   addDayTopBtn: {
-    backgroundColor: '#064E3B',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   addDayTopBtnText: {
-    color: '#10B981',
     fontSize: 11,
     fontWeight: 'bold',
   },
   dayCard: {
-    backgroundColor: '#171E2D',
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   dayHeaderRow: {
     flexDirection: 'row',
@@ -669,15 +870,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dayNameInput: {
-    color: '#F8FAFC',
     fontSize: 15,
     fontWeight: 'bold',
-    backgroundColor: '#0F172A',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   dayRightHeaderControls: {
     flexDirection: 'row',
@@ -688,51 +886,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#0F172A',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   restDayLabel: {
-    color: '#64748B',
     fontSize: 11,
     fontWeight: 'bold',
-  },
-  restDayLabelActive: {
-    color: '#10B981',
   },
   removeDayBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
   },
   removeDayBtnText: {
-    color: '#EF4444',
     fontSize: 13,
     fontWeight: 'bold',
   },
   restDayCardBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
     borderRadius: 14,
     padding: 14,
     gap: 12,
     borderWidth: 1,
-    borderColor: '#10B981',
   },
   restDayBannerTitle: {
-    color: '#10B981',
     fontSize: 14,
     fontWeight: 'bold',
   },
   restDayBannerSub: {
-    color: '#94A3B8',
     fontSize: 11.5,
     marginTop: 2,
   },
@@ -740,18 +926,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   noExercisesText: {
-    color: '#64748B',
     fontSize: 12,
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 10,
   },
   exerciseCardItem: {
-    backgroundColor: '#0F172A',
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   exerciseHeader: {
     flexDirection: 'row',
@@ -760,12 +943,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   exerciseNameText: {
-    color: '#F8FAFC',
     fontSize: 13.5,
     fontWeight: 'bold',
   },
   removeExText: {
-    color: '#EF4444',
     fontSize: 11,
     fontWeight: '600',
   },
@@ -777,64 +958,51 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   paramLabel: {
-    color: '#64748B',
     fontSize: 9,
     fontWeight: 'bold',
     letterSpacing: 0.5,
     marginBottom: 3,
   },
   paramInput: {
-    backgroundColor: '#1E293B',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    color: '#F8FAFC',
     fontSize: 12.5,
     fontWeight: 'bold',
     textAlign: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
   },
   addExerciseToDayBtn: {
-    backgroundColor: '#1E293B',
     borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
     marginTop: 4,
   },
   addExerciseToDayBtnText: {
-    color: '#10B981',
     fontSize: 12,
     fontWeight: 'bold',
   },
   bottomAddDayBtn: {
-    backgroundColor: '#171E2D',
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#10B981',
     marginBottom: 20,
   },
   bottomAddDayBtnText: {
-    color: '#10B981',
     fontSize: 14,
     fontWeight: 'bold',
   },
   bottomBar: {
     paddingVertical: 12,
-    backgroundColor: '#0F172A',
   },
   saveRoutineBtn: {
-    backgroundColor: '#10B981',
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
   },
   saveRoutineBtnText: {
-    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: 'bold',
   },
@@ -845,11 +1013,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modalCard: {
-    backgroundColor: '#171E2D',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -858,43 +1024,36 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   modalTitle: {
-    color: '#F8FAFC',
     fontSize: 18,
     fontWeight: 'bold',
   },
   modalSearchInput: {
-    backgroundColor: '#0F172A',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#F8FAFC',
     fontSize: 14,
     borderWidth: 1,
-    borderColor: '#334155',
     marginBottom: 12,
   },
   catalogItemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#334155',
   },
   catalogItemName: {
-    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: 'bold',
   },
   catalogItemSub: {
-    color: '#94A3B8',
     fontSize: 11,
     marginTop: 2,
   },
   catalogAddIcon: {
     fontSize: 14,
+    fontWeight: 'bold',
   },
 });
