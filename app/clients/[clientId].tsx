@@ -167,12 +167,14 @@ export default function ClientInspectionDetailScreen() {
           {/* Today's Daily Nutrition Section with Edit Targets Action */}
           <View style={styles.subCard}>
             <View style={styles.nutritionCardHeaderRow}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.subCardTitle}>🥗 Today's Daily Nutrition</Text>
-                <Text style={styles.subCardBadge}>Target Compliance: {calPct}%</Text>
+                <Text style={styles.subCardBadge}>
+                  {loggedCal.toLocaleString()} of {targetCal.toLocaleString()} kcal ({calPct}%)
+                </Text>
               </View>
 
-              {/* 🎯 Edit Targets Button moved directly here */}
+              {/* 🎯 Edit Targets Button */}
               <TouchableOpacity
                 style={styles.btnEditTargets}
                 onPress={() => {
@@ -185,53 +187,66 @@ export default function ClientInspectionDetailScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.macroBlock}>
-              <View style={styles.macroHeader}>
-                <Text style={styles.macroName}>Calories</Text>
-                <Text style={styles.macroValText}>
-                  {loggedCal} / {targetCal} kcal ({calPct}%)
-                </Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${calPct}%`, backgroundColor: '#10B981' }]} />
-              </View>
-            </View>
+            {/* Proportional Segmented Progress Bar & Macro Grid */}
+            {(() => {
+              const pKcal = Math.round(loggedProtein * 4);
+              const cKcal = Math.round(loggedCarbs * 4);
+              const fKcal = Math.round(loggedFat * 9);
+              const remKcal = Math.max(0, targetCal - loggedCal);
+              const totKcalTrack = Math.max(targetCal, pKcal + cKcal + fKcal + remKcal);
 
-            <View style={styles.macroBlock}>
-              <View style={styles.macroHeader}>
-                <Text style={styles.macroName}>🥩 Protein</Text>
-                <Text style={styles.macroValText}>
-                  {loggedProtein}g / {targetProtein}g ({proteinPct}%)
-                </Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${proteinPct}%`, backgroundColor: '#3B82F6' }]} />
-              </View>
-            </View>
+              return (
+                <>
+                  <View style={styles.segmentedProgressBarTrack}>
+                    {pKcal > 0 && (
+                      <View style={[styles.segmentedFill, { flex: pKcal, backgroundColor: '#3B82F6' }]} />
+                    )}
+                    {cKcal > 0 && (
+                      <View style={[styles.segmentedFill, { flex: cKcal, backgroundColor: '#A855F7' }]} />
+                    )}
+                    {fKcal > 0 && (
+                      <View style={[styles.segmentedFill, { flex: fKcal, backgroundColor: '#F59E0B' }]} />
+                    )}
+                    {(remKcal > 0 || totKcalTrack === 0) && (
+                      <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remKcal), backgroundColor: '#1E293B' }]} />
+                    )}
+                  </View>
 
-            <View style={styles.macroBlock}>
-              <View style={styles.macroHeader}>
-                <Text style={styles.macroName}>🍞 Carbs</Text>
-                <Text style={styles.macroValText}>
-                  {loggedCarbs}g / {targetCarbs}g ({carbsPct}%)
-                </Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${carbsPct}%`, backgroundColor: '#A855F7' }]} />
-              </View>
-            </View>
+                  {/* 3-Column Macro Details Grid */}
+                  <View style={styles.macroPillGrid}>
+                    {/* Protein */}
+                    <View style={styles.macroPillCard}>
+                      <View style={styles.macroPillHeader}>
+                        <View style={[styles.macroDot, { backgroundColor: '#3B82F6' }]} />
+                        <Text style={styles.macroPillLabel}>PROTEIN</Text>
+                      </View>
+                      <Text style={styles.macroPillVal}>{loggedProtein}g / {targetProtein}g</Text>
+                      <Text style={styles.macroPillSub}>{pKcal} kcal ({proteinPct}%)</Text>
+                    </View>
 
-            <View style={styles.macroBlock}>
-              <View style={styles.macroHeader}>
-                <Text style={styles.macroName}>🥑 Fat</Text>
-                <Text style={styles.macroValText}>
-                  {loggedFat}g / {targetFat}g ({fatPct}%)
-                </Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${fatPct}%`, backgroundColor: '#F59E0B' }]} />
-              </View>
-            </View>
+                    {/* Carbs */}
+                    <View style={styles.macroPillCard}>
+                      <View style={styles.macroPillHeader}>
+                        <View style={[styles.macroDot, { backgroundColor: '#A855F7' }]} />
+                        <Text style={styles.macroPillLabel}>CARBS</Text>
+                      </View>
+                      <Text style={styles.macroPillVal}>{loggedCarbs}g / {targetCarbs}g</Text>
+                      <Text style={styles.macroPillSub}>{cKcal} kcal ({carbsPct}%)</Text>
+                    </View>
+
+                    {/* Fat */}
+                    <View style={styles.macroPillCard}>
+                      <View style={styles.macroPillHeader}>
+                        <View style={[styles.macroDot, { backgroundColor: '#F59E0B' }]} />
+                        <Text style={styles.macroPillLabel}>FAT</Text>
+                      </View>
+                      <Text style={styles.macroPillVal}>{loggedFat}g / {targetFat}g</Text>
+                      <Text style={styles.macroPillSub}>{fKcal} kcal ({fatPct}%)</Text>
+                    </View>
+                  </View>
+                </>
+              );
+            })()}
 
             {/* Logged Meals List */}
             <Text style={styles.mealsListHeader}>Logged Meals Today:</Text>
@@ -582,8 +597,64 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  macroBlock: {
-    marginBottom: 8,
+  segmentedProgressBarTrack: {
+    flexDirection: 'row',
+    height: 12,
+    backgroundColor: '#1E293B',
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 12,
+    gap: 2,
+  },
+  segmentedFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  segmentedFillEmpty: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  macroPillGrid: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+  },
+  macroPillCard: {
+    flex: 1,
+    backgroundColor: '#06110D',
+    borderRadius: 10,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#10B98122',
+  },
+  macroPillHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  macroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  macroPillLabel: {
+    color: '#94A3B8',
+    fontSize: 8.5,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  macroPillVal: {
+    color: '#F8FAFC',
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+  },
+  macroPillSub: {
+    color: '#64748B',
+    fontSize: 8.5,
+    marginTop: 2,
   },
   macroHeader: {
     flexDirection: 'row',

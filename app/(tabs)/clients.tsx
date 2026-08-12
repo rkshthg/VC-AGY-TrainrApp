@@ -236,30 +236,55 @@ export default function ClientsScreen() {
                       <View style={styles.divider} />
 
                       {/* Detailed Macro Grid */}
-                      <View style={styles.macroGrid}>
-                        <Text style={styles.macroGridTitle}>Daily Macro Compliance</Text>
-                        <View style={styles.macroRow}>
-                          <Text style={styles.macroLabel}>Protein</Text>
-                          <Text style={styles.macroValue}>
-                            {Math.round((client.todayCaloriesLogged * 0.3) / 4)}g /{' '}
-                            {Math.round((client.targetCalories * 0.3) / 4)}g
-                          </Text>
-                        </View>
-                        <View style={styles.macroRow}>
-                          <Text style={styles.macroLabel}>Carbs</Text>
-                          <Text style={styles.macroValue}>
-                            {Math.round((client.todayCaloriesLogged * 0.4) / 4)}g /{' '}
-                            {Math.round((client.targetCalories * 0.4) / 4)}g
-                          </Text>
-                        </View>
-                        <View style={styles.macroRow}>
-                          <Text style={styles.macroLabel}>Fat</Text>
-                          <Text style={styles.macroValue}>
-                            {Math.round((client.todayCaloriesLogged * 0.3) / 9)}g /{' '}
-                            {Math.round((client.targetCalories * 0.3) / 9)}g
-                          </Text>
-                        </View>
-                      </View>
+                      {(() => {
+                        const pG = Math.round((client.todayCaloriesLogged * 0.3) / 4);
+                        const cG = Math.round((client.todayCaloriesLogged * 0.4) / 4);
+                        const fG = Math.round((client.todayCaloriesLogged * 0.3) / 9);
+                        const pTarget = Math.round((client.targetCalories * 0.3) / 4);
+                        const cTarget = Math.round((client.targetCalories * 0.4) / 4);
+                        const fTarget = Math.round((client.targetCalories * 0.3) / 9);
+
+                        const pKcal = pG * 4;
+                        const cKcal = cG * 4;
+                        const fKcal = fG * 9;
+                        const remKcal = Math.max(0, client.targetCalories - client.todayCaloriesLogged);
+
+                        return (
+                          <View style={styles.macroGrid}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <Text style={styles.macroGridTitle}>Daily Macro Compliance</Text>
+                              <Text style={{ color: '#EAB308', fontSize: 11, fontWeight: 'bold' }}>
+                                {client.todayCaloriesLogged} / {client.targetCalories} kcal
+                              </Text>
+                            </View>
+
+                            {/* Mini Segmented Progress Bar */}
+                            <View style={styles.miniSegmentedTrack}>
+                              {pKcal > 0 && <View style={[styles.segmentedFill, { flex: pKcal, backgroundColor: '#3B82F6' }]} />}
+                              {cKcal > 0 && <View style={[styles.segmentedFill, { flex: cKcal, backgroundColor: '#A855F7' }]} />}
+                              {fKcal > 0 && <View style={[styles.segmentedFill, { flex: fKcal, backgroundColor: '#F59E0B' }]} />}
+                              {(remKcal > 0 || (pKcal + cKcal + fKcal) === 0) && (
+                                <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remKcal), backgroundColor: '#1E293B' }]} />
+                              )}
+                            </View>
+
+                            <View style={styles.miniMacroPillRow}>
+                              <View style={styles.miniMacroPill}>
+                                <Text style={{ color: '#3B82F6', fontSize: 9, fontWeight: 'bold' }}>PROTEIN</Text>
+                                <Text style={styles.miniMacroPillVal}>{pG}g / {pTarget}g</Text>
+                              </View>
+                              <View style={styles.miniMacroPill}>
+                                <Text style={{ color: '#A855F7', fontSize: 9, fontWeight: 'bold' }}>CARBS</Text>
+                                <Text style={styles.miniMacroPillVal}>{cG}g / {cTarget}g</Text>
+                              </View>
+                              <View style={styles.miniMacroPill}>
+                                <Text style={{ color: '#F59E0B', fontSize: 9, fontWeight: 'bold' }}>FAT</Text>
+                                <Text style={styles.miniMacroPillVal}>{fG}g / {fTarget}g</Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })()}
 
                       {/* Trainer Actions Bar */}
                       <View style={styles.trainerActionBar}>
@@ -587,7 +612,44 @@ const styles = StyleSheet.create({
     color: '#A7F3D0',
     fontSize: 12,
     fontWeight: 'bold',
-    marginBottom: 8,
+  },
+  miniSegmentedTrack: {
+    flexDirection: 'row',
+    height: 10,
+    backgroundColor: '#1E293B',
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 10,
+    gap: 2,
+  },
+  segmentedFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  segmentedFillEmpty: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  miniMacroPillRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  miniMacroPill: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+  },
+  miniMacroPillVal: {
+    color: '#F8FAFC',
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
   macroRow: {
     flexDirection: 'row',

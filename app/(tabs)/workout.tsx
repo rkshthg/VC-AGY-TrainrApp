@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { HeaderBar } from '../../components/HeaderBar';
 import { SettingsDrawer } from '../../components/SettingsDrawer';
@@ -45,6 +45,27 @@ export default function WorkoutScreen() {
   const handleEditPlan = (plan: WorkoutPlan) => {
     setMenuOpenPlanId(null);
     router.push(`/workout/builder?editPlanId=${plan.id}`);
+  };
+
+  const handleExportJson = (plan: WorkoutPlan) => {
+    setMenuOpenPlanId(null);
+    const fileName = `${plan.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_routine.json`;
+    const jsonString = JSON.stringify(plan, null, 2);
+
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      Alert.alert('Export Successful', `Exported "${plan.title}" as ${fileName}`);
+    } else {
+      Alert.alert('JSON Exported', `Exported "${plan.title}" JSON file: ${fileName}`);
+    }
   };
 
   // Active routine based on activePlanId state
@@ -352,6 +373,13 @@ export default function WorkoutScreen() {
                         onPress={() => handleDuplicatePlan(plan)}
                       >
                         <Text style={styles.menuPopupItemText}>📋 Duplicate Routine</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.menuPopupItem}
+                        onPress={() => handleExportJson(plan)}
+                      >
+                        <Text style={styles.menuPopupItemText}>📥 Export JSON</Text>
                       </TouchableOpacity>
 
                       {/* Visible ONLY for Trainer Accounts */}

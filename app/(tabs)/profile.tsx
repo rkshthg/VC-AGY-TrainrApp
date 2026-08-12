@@ -36,19 +36,39 @@ export default function ProfileScreen() {
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
 
-  // Check-In Modal state
+  const avatarPresets = [
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300',
+    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300',
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300',
+    'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=300',
+    'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300',
+  ];
+
+  const handleSelectAvatar = (url?: string) => {
+    if (!profile) return;
+    setProfile({
+      ...profile,
+      avatarUrl: url,
+    });
+    setAvatarModalVisible(false);
+    Alert.alert('Profile Picture Updated', 'Your profile picture has been updated!');
+  };
+
+  // Check-In Modal state (All optional, start empty with placeholders showing current values)
   const [checkinModalVisible, setCheckinModalVisible] = useState(false);
-  const [heightInput, setHeightInput] = useState(String(profile?.heightCm || 175));
-  const [weightInput, setWeightInput] = useState(String(weightHistory[0]?.weightKg || 76.4));
-  const [neckInput, setNeckInput] = useState(String(latestMeasurements?.neckCm || 39));
-  const [waistInput, setWaistInput] = useState(String(latestMeasurements?.waistCm || 84));
-  const [hipsInput, setHipsInput] = useState(String(latestMeasurements?.hipsCm || 98));
-  const [chestInput, setChestInput] = useState(String(latestMeasurements?.chestCm || ''));
-  const [bicepsLInput, setBicepsLInput] = useState(String(latestMeasurements?.bicepsLCm || ''));
-  const [bicepsRInput, setBicepsRInput] = useState(String(latestMeasurements?.bicepsRCm || ''));
-  const [thighsLInput, setThighsLInput] = useState(String(latestMeasurements?.thighsLCm || ''));
-  const [thighsRInput, setThighsRInput] = useState(String(latestMeasurements?.thighsRCm || ''));
+  const [heightInput, setHeightInput] = useState('');
+  const [weightInput, setWeightInput] = useState('');
+  const [neckInput, setNeckInput] = useState('');
+  const [waistInput, setWaistInput] = useState('');
+  const [hipsInput, setHipsInput] = useState('');
+  const [chestInput, setChestInput] = useState('');
+  const [bicepsLInput, setBicepsLInput] = useState('');
+  const [bicepsRInput, setBicepsRInput] = useState('');
+  const [thighsLInput, setThighsLInput] = useState('');
+  const [thighsRInput, setThighsRInput] = useState('');
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([
     'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400',
   ]);
@@ -92,8 +112,11 @@ export default function ProfileScreen() {
     const parsedThighsL = parseFloat(thighsLInput);
     const parsedThighsR = parseFloat(thighsRInput);
 
+    const updatedSummaryList: string[] = [];
+
     if (!isNaN(parsedWeight) && parsedWeight > 0) {
       addWeightLog(parsedWeight);
+      updatedSummaryList.push(`${parsedWeight} kg`);
     }
 
     const measurementsToUpdate: Record<string, number> = {};
@@ -108,6 +131,7 @@ export default function ProfileScreen() {
 
     if (Object.keys(measurementsToUpdate).length > 0) {
       updateMeasurements(measurementsToUpdate);
+      updatedSummaryList.push('Body Measurements');
     }
 
     if (!isNaN(parsedHeight) && parsedHeight > 0 && profile) {
@@ -115,11 +139,19 @@ export default function ProfileScreen() {
         ...profile,
         heightCm: parsedHeight,
       });
+      updatedSummaryList.push(`Height: ${parsedHeight}cm`);
     }
 
     uploadedPhotos.forEach((uri) => {
       addCheckinPhoto(uri, 'Transformation Check-In');
     });
+    if (uploadedPhotos.length > 0) {
+      updatedSummaryList.push(`${uploadedPhotos.length} Photo(s)`);
+    }
+
+    const summaryText = updatedSummaryList.length > 0
+      ? updatedSummaryList.join(' & ')
+      : `${weightHistory[0]?.weightKg || 76.4} kg Retained`;
 
     addLiveFeedEvent({
       clientId: profile?.id || 'usr_1',
@@ -127,13 +159,25 @@ export default function ProfileScreen() {
       eventType: 'UPLOAD_CHECKIN',
       timeAgo: 'Just now',
       actionVerb: 'Logged',
-      targetTitle: `Transformation Check-In (${parsedWeight || weightHistory[0]?.weightKg} kg & Health Metrics Updated)`,
+      targetTitle: `Transformation Check-In (${summaryText})`,
       tags: [
         { label: 'Check-In', type: 'success' },
         { label: 'Metrics Updated', type: 'success' },
       ],
       timestamp: new Date().toISOString(),
     });
+
+    // Reset optional input fields back to empty (placeholders display current values)
+    setHeightInput('');
+    setWeightInput('');
+    setNeckInput('');
+    setWaistInput('');
+    setHipsInput('');
+    setChestInput('');
+    setBicepsLInput('');
+    setBicepsRInput('');
+    setThighsLInput('');
+    setThighsRInput('');
 
     setCheckinModalVisible(false);
     Alert.alert(
@@ -147,9 +191,14 @@ export default function ProfileScreen() {
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* 👤 1. HERO PROFILE CARD (LARGER AVATAR) */}
-        <View style={styles.centeredHeroCard}>
-          <View style={styles.avatarGoldBorder}>
+        {/* 👤 COMPACT HORIZONTAL PROFILE HEADER */}
+        <View style={styles.profileHeaderCard}>
+          {/* Avatar (Tappable to change profile picture) */}
+          <TouchableOpacity
+            style={styles.avatarGoldBorder}
+            onPress={() => setAvatarModalVisible(true)}
+            activeOpacity={0.8}
+          >
             {profile?.avatarUrl ? (
               <Image source={{ uri: profile.avatarUrl }} style={styles.centeredAvatarImg} />
             ) : (
@@ -159,48 +208,65 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             )}
-          </View>
+            <View style={styles.avatarEditBadge}>
+              <Text style={{ fontSize: 13 }}>📷</Text>
+            </View>
+          </TouchableOpacity>
 
-          <View style={styles.goldRolePill}>
-            <Text style={styles.goldRolePillText}>
-              {role === 'TRAINER' ? 'TRAINER' : 'CLIENT'}
+          {/* Identity Info */}
+          <View style={styles.profileHeaderInfo}>
+            <Text style={styles.heroNameText}>{profile?.fullName || 'Alex Rivers'}</Text>
+            <Text style={styles.heroSubText}>
+              {role === 'TRAINER' ? 'Elite Conditioning Specialist' : 'Fitness Enthusiast'}
             </Text>
-          </View>
 
-          <Text style={styles.heroNameText}>{profile?.fullName || 'Alex Rivers'}</Text>
-          <Text style={styles.heroSubText}>
-            {role === 'TRAINER' ? 'Elite Conditioning Specialist' : 'Fitness Enthusiast'}
-          </Text>
+            {/* Trainer Code Chip (Trainer Account) */}
+            {role === 'TRAINER' && (
+              <View style={styles.trainerCodeChip}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.trainerCodeChipLabel}>YOUR TRAINER CODE</Text>
+                  <Text style={styles.trainerCodeChipVal}>Code: {trainerCode || 'TRN-882'}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.trainerCodeCopyBtn}
+                  onPress={() => {
+                    Alert.alert('Copied!', `Trainer code "${trainerCode || 'TRN-882'}" copied to clipboard.`);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 12 }}>📋</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Linked Trainer Chip */}
+            <View style={styles.linkedTrainerChip}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.linkedTrainerChipLabel}>LINKED TRAINER</Text>
+                <Text style={styles.linkedTrainerChipName}>Coach Marcus Vance</Text>
+                <Text style={styles.linkedTrainerChipCode}>Code: MV-7X21</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.unlinkTrainerBtn}
+                onPress={() => {
+                  Alert.alert(
+                    'Unlink Trainer',
+                    'Are you sure you want to unlink from Coach Marcus Vance?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Unlink', style: 'destructive', onPress: () => { } },
+                    ]
+                  );
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.unlinkTrainerBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
-        {/* ⚡ 2. TRAINER DETAILS SECTION (BETWEEN PROFILE & ACTION PILLS) */}
-        {role === 'TRAINER' ? (
-          <View style={styles.trainerCodeCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ fontSize: 16, color: '#EAB308', fontWeight: 'bold' }}>{'</>'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.trainerCardLabel}>YOUR UNIQUE TRAINER CODE</Text>
-                <Text style={styles.trainerCodeVal}>{trainerCode || 'TR-V95Y'}</Text>
-              </View>
-            </View>
-            <Text style={styles.trainerCardSub}>Share this code with trainees to link accounts.</Text>
-          </View>
-        ) : (
-          <View style={styles.linkedTrainerCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-              <Text style={{ fontSize: 16, color: '#94A3B8', fontWeight: 'bold' }}>{'T'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.trainerCardLabel}>YOUR TRAINER</Text>
-                <Text style={styles.trainerNameText}>Coach Marcus Vance</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.searchIconBtn}>
-              <Text style={{ color: '#EAB308', fontSize: 14, fontWeight: 'bold' }}>{'⌕'}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ⚡ 3. ACTION PILL ROW (CALENDAR LEFT, CHECK-IN RIGHT) */}
+        {/* ACTION PILL ROW */}
         <View style={styles.actionPillRow}>
           <TouchableOpacity
             style={styles.calendarPillBtn}
@@ -215,7 +281,7 @@ export default function ProfileScreen() {
             onPress={() => setCheckinModalVisible(true)}
             activeOpacity={0.8}
           >
-            <Text style={styles.checkinPillText}>Transformation Check-In</Text>
+            <Text style={styles.checkinPillText}>Check-In</Text>
           </TouchableOpacity>
         </View>
 
@@ -267,7 +333,7 @@ export default function ProfileScreen() {
             {/* Height */}
             <View style={styles.measureTile}>
               <View style={styles.measureTileHeader}>
-
+                <Text style={styles.measureTileIcon}>↨</Text>
                 <Text style={styles.measureTileLabel}>HEIGHT</Text>
               </View>
               <Text style={styles.measureTileVal}>{profile?.heightCm || 185} <Text style={styles.measureTileUnit}>cm</Text></Text>
@@ -276,7 +342,7 @@ export default function ProfileScreen() {
             {/* Weight */}
             <View style={styles.measureTile}>
               <View style={styles.measureTileHeader}>
-
+                <Text style={styles.measureTileIcon}>⚖️</Text>
                 <Text style={styles.measureTileLabel}>WEIGHT</Text>
               </View>
               <Text style={styles.measureTileVal}>{weightHistory[0]?.weightKg || 92} <Text style={styles.measureTileUnit}>kg</Text></Text>
@@ -286,7 +352,7 @@ export default function ProfileScreen() {
             {latestMeasurements?.neckCm ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
+                  <Text style={styles.measureTileIcon}>📏</Text>
                   <Text style={styles.measureTileLabel}>NECK</Text>
                 </View>
                 <Text style={styles.measureTileVal}>{latestMeasurements.neckCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
@@ -297,7 +363,7 @@ export default function ProfileScreen() {
             {latestMeasurements?.chestCm ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
+                  <Text style={styles.measureTileIcon}>📏</Text>
                   <Text style={styles.measureTileLabel}>CHEST</Text>
                 </View>
                 <Text style={styles.measureTileVal}>{latestMeasurements.chestCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
@@ -308,7 +374,7 @@ export default function ProfileScreen() {
             {latestMeasurements?.waistCm ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
+                  <Text style={styles.measureTileIcon}>📏</Text>
                   <Text style={styles.measureTileLabel}>WAIST</Text>
                 </View>
                 <Text style={styles.measureTileVal}>{latestMeasurements.waistCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
@@ -319,7 +385,7 @@ export default function ProfileScreen() {
             {latestMeasurements?.hipsCm ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
+                  <Text style={styles.measureTileIcon}>📏</Text>
                   <Text style={styles.measureTileLabel}>HIPS</Text>
                 </View>
                 <Text style={styles.measureTileVal}>{latestMeasurements.hipsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
@@ -327,46 +393,46 @@ export default function ProfileScreen() {
             ) : null}
 
             {/* Biceps L */}
-            {(latestMeasurements?.bicepsLCm || (!latestMeasurements?.bicepsRCm && latestMeasurements?.bicepsCm)) ? (
+            {(latestMeasurements?.bicepsLCm || latestMeasurements?.bicepsCm) ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
-                  <Text style={styles.measureTileLabel}>{latestMeasurements?.bicepsLCm ? 'BICEPS (L)' : 'BICEPS'}</Text>
+                  <Text style={styles.measureTileIcon}>💪</Text>
+                  <Text style={styles.measureTileLabel}>BICEPS (L)</Text>
                 </View>
                 <Text style={styles.measureTileVal}>{latestMeasurements?.bicepsLCm || latestMeasurements?.bicepsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
               </View>
             ) : null}
 
             {/* Biceps R */}
-            {latestMeasurements?.bicepsRCm ? (
+            {(latestMeasurements?.bicepsRCm || latestMeasurements?.bicepsCm) ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
+                  <Text style={styles.measureTileIcon}>💪</Text>
                   <Text style={styles.measureTileLabel}>BICEPS (R)</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements.bicepsRCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={styles.measureTileVal}>{latestMeasurements?.bicepsRCm || latestMeasurements?.bicepsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
               </View>
             ) : null}
 
             {/* Thighs L */}
-            {(latestMeasurements?.thighsLCm || (!latestMeasurements?.thighsRCm && latestMeasurements?.thighsCm)) ? (
+            {(latestMeasurements?.thighsLCm || latestMeasurements?.thighsCm) ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
-                  <Text style={styles.measureTileLabel}>{latestMeasurements?.thighsLCm ? 'THIGHS (L)' : 'THIGHS'}</Text>
+                  <Text style={styles.measureTileIcon}>🦵</Text>
+                  <Text style={styles.measureTileLabel}>THIGHS (L)</Text>
                 </View>
                 <Text style={styles.measureTileVal}>{latestMeasurements?.thighsLCm || latestMeasurements?.thighsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
               </View>
             ) : null}
 
             {/* Thighs R */}
-            {latestMeasurements?.thighsRCm ? (
+            {(latestMeasurements?.thighsRCm || latestMeasurements?.thighsCm) ? (
               <View style={styles.measureTile}>
                 <View style={styles.measureTileHeader}>
-
+                  <Text style={styles.measureTileIcon}>🦵</Text>
                   <Text style={styles.measureTileLabel}>THIGHS (R)</Text>
                 </View>
-                <Text style={styles.measureTileVal}>{latestMeasurements.thighsRCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
+                <Text style={styles.measureTileVal}>{latestMeasurements?.thighsRCm || latestMeasurements?.thighsCm} <Text style={styles.measureTileUnit}>cm</Text></Text>
               </View>
             ) : null}
           </View>
@@ -380,37 +446,37 @@ export default function ProfileScreen() {
             {/* Bench Press */}
             <View style={styles.prKpiCard}>
               <View style={styles.prKpiIconWrap}>
-                <Text style={styles.prKpiIcon}>B</Text>
+                <Text style={styles.prKpiIcon}>🏋️</Text>
               </View>
               <Text style={styles.prKpiLabel}>BENCH PRESS</Text>
               <Text style={styles.prKpiValue}>
                 {personalRecords['ex_01']?.oneRmKg ? `${personalRecords['ex_01'].oneRmKg}` : '100'}
               </Text>
-              <Text style={styles.prKpiUnit}>kg / 1RM</Text>
+              <Text style={styles.prKpiUnit}>kg · 1RM</Text>
             </View>
 
             {/* Squat */}
             <View style={styles.prKpiCard}>
               <View style={styles.prKpiIconWrap}>
-                <Text style={styles.prKpiIcon}>S</Text>
+                <Text style={styles.prKpiIcon}>🦵</Text>
               </View>
               <Text style={styles.prKpiLabel}>SQUAT</Text>
               <Text style={styles.prKpiValue}>
                 {personalRecords['ex_07']?.oneRmKg ? `${personalRecords['ex_07'].oneRmKg}` : '140'}
               </Text>
-              <Text style={styles.prKpiUnit}>kg / 1RM</Text>
+              <Text style={styles.prKpiUnit}>kg · 1RM</Text>
             </View>
 
             {/* Deadlift */}
             <View style={styles.prKpiCard}>
               <View style={styles.prKpiIconWrap}>
-                <Text style={styles.prKpiIcon}>D</Text>
+                <Text style={styles.prKpiIcon}>💀</Text>
               </View>
               <Text style={styles.prKpiLabel}>DEADLIFT</Text>
               <Text style={styles.prKpiValue}>
                 {personalRecords['ex_08']?.oneRmKg ? `${personalRecords['ex_08'].oneRmKg}` : '180'}
               </Text>
-              <Text style={styles.prKpiUnit}>kg / 1RM</Text>
+              <Text style={styles.prKpiUnit}>kg · 1RM</Text>
             </View>
           </View>
         </View>
@@ -436,7 +502,7 @@ export default function ProfileScreen() {
             {checkinPhotos.map((photo, idx) => (
               <View key={photo.id} style={styles.timelineRow}>
                 <View style={styles.timelineNode}>
-                  <Text style={styles.timelineNodeIcon}>P</Text>
+                  <Text style={styles.timelineNodeIcon}>📷</Text>
                 </View>
 
                 <View style={styles.timelineCard}>
@@ -461,7 +527,7 @@ export default function ProfileScreen() {
                       );
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: '#EF4444' }}>X</Text>
+                    <Text style={{ fontSize: 12 }}>🗑️</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -471,7 +537,7 @@ export default function ProfileScreen() {
             {weightHistory.slice(0, 3).map((wLog, idx) => (
               <View key={wLog.id} style={styles.timelineRow}>
                 <View style={styles.timelineNode}>
-                  <Text style={styles.timelineNodeIcon}>W</Text>
+                  <Text style={styles.timelineNodeIcon}>🔲</Text>
                 </View>
 
                 <View style={styles.timelineCard}>
@@ -511,6 +577,8 @@ export default function ProfileScreen() {
             </Text>
 
             <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
+              {/* Section 1: Basic Body Stats */}
+              <Text style={styles.sectionSubHeader}>Basic Stats (Optional)</Text>
               <View style={styles.inputGrid}>
                 <View style={styles.inputCol}>
                   <Text style={styles.inputLabel}>Height (cm)</Text>
@@ -518,7 +586,7 @@ export default function ProfileScreen() {
                     style={styles.input}
                     value={heightInput}
                     onChangeText={setHeightInput}
-                    placeholder="e.g. 175"
+                    placeholder={String(profile?.heightCm || 175)}
                     placeholderTextColor="#64748B"
                     keyboardType="numeric"
                   />
@@ -530,84 +598,35 @@ export default function ProfileScreen() {
                     style={styles.input}
                     value={weightInput}
                     onChangeText={setWeightInput}
-                    placeholder="e.g. 76.4"
+                    placeholder={String(weightHistory[0]?.weightKg || 76.4)}
                     placeholderTextColor="#64748B"
                     keyboardType="numeric"
                   />
                 </View>
               </View>
 
-              <Text style={styles.sectionSubHeader}>Body Measurements (cm)</Text>
-              <View style={styles.inputGridTriple}>
-                <View style={styles.inputColTriple}>
-                  <Text style={styles.inputLabel}>Neck</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={neckInput}
-                    onChangeText={setNeckInput}
-                    placeholder="39"
-                    placeholderTextColor="#64748B"
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={styles.inputColTriple}>
-                  <Text style={styles.inputLabel}>Waist</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={waistInput}
-                    onChangeText={setWaistInput}
-                    placeholder="84"
-                    placeholderTextColor="#64748B"
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={styles.inputColTriple}>
-                  <Text style={styles.inputLabel}>Hips</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={hipsInput}
-                    onChangeText={setHipsInput}
-                    placeholder="98"
-                    placeholderTextColor="#64748B"
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGridTriple}>
-                <View style={styles.inputColTriple}>
+              {/* Section 2: Upper Body Measurements */}
+              <Text style={styles.sectionSubHeader}>Upper Body (cm)</Text>
+              <View style={styles.inputGrid}>
+                <View style={styles.inputCol}>
                   <Text style={styles.inputLabel}>Chest</Text>
                   <TextInput
                     style={styles.input}
                     value={chestInput}
                     onChangeText={setChestInput}
-                    placeholder="102"
+                    placeholder={String(latestMeasurements?.chestCm || 102)}
                     placeholderTextColor="#64748B"
                     keyboardType="numeric"
                   />
                 </View>
 
-                <View style={styles.inputColTriple}>
-                  <Text style={styles.inputLabel}>Biceps L</Text>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Neck</Text>
                   <TextInput
                     style={styles.input}
-                    value={bicepsLInput}
-                    onChangeText={setBicepsLInput}
-                    placeholder="37"
-                    placeholderTextColor="#64748B"
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={styles.inputColTriple}>
-                  <Text style={styles.inputLabel}>Biceps R</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={bicepsRInput}
-                    onChangeText={setBicepsRInput}
-                    placeholder="37"
+                    value={neckInput}
+                    onChangeText={setNeckInput}
+                    placeholder={String(latestMeasurements?.neckCm || 39)}
                     placeholderTextColor="#64748B"
                     keyboardType="numeric"
                   />
@@ -616,31 +635,85 @@ export default function ProfileScreen() {
 
               <View style={styles.inputGrid}>
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Thighs L</Text>
+                  <Text style={styles.inputLabel}>Biceps (Left)</Text>
                   <TextInput
                     style={styles.input}
-                    value={thighsLInput}
-                    onChangeText={setThighsLInput}
-                    placeholder="58"
+                    value={bicepsLInput}
+                    onChangeText={setBicepsLInput}
+                    placeholder={String(latestMeasurements?.bicepsLCm || 37)}
                     placeholderTextColor="#64748B"
                     keyboardType="numeric"
                   />
                 </View>
 
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Thighs R</Text>
+                  <Text style={styles.inputLabel}>Biceps (Right)</Text>
                   <TextInput
                     style={styles.input}
-                    value={thighsRInput}
-                    onChangeText={setThighsRInput}
-                    placeholder="58"
+                    value={bicepsRInput}
+                    onChangeText={setBicepsRInput}
+                    placeholder={String(latestMeasurements?.bicepsRCm || 37)}
                     placeholderTextColor="#64748B"
                     keyboardType="numeric"
                   />
                 </View>
               </View>
 
-              {/* Photos Upload Slots */}
+              {/* Section 3: Core & Lower Body Measurements */}
+              <Text style={styles.sectionSubHeader}>Core & Lower Body (cm)</Text>
+              <View style={styles.inputGrid}>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Waist</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={waistInput}
+                    onChangeText={setWaistInput}
+                    placeholder={String(latestMeasurements?.waistCm || 84)}
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Hips</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={hipsInput}
+                    onChangeText={setHipsInput}
+                    placeholder={String(latestMeasurements?.hipsCm || 98)}
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGrid}>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Thighs (Left)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={thighsLInput}
+                    onChangeText={setThighsLInput}
+                    placeholder={String(latestMeasurements?.thighsLCm || 58)}
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Thighs (Right)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={thighsRInput}
+                    onChangeText={setThighsRInput}
+                    placeholder={String(latestMeasurements?.thighsRCm || 58)}
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              {/* Section 4: Check-In Photos */}
               <View style={{ marginTop: 12 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <Text style={styles.sectionSubHeader}>Check-In Photos (Max 3)</Text>
@@ -663,7 +736,7 @@ export default function ProfileScreen() {
                   ))}
                   {uploadedPhotos.length < 3 && (
                     <TouchableOpacity style={styles.uploadSlotEmpty} onPress={handleAddSamplePhoto}>
-                      <Text style={styles.uploadSlotIcon}>+</Text>
+                      <Text style={styles.uploadSlotIcon}>📷</Text>
                       <Text style={styles.uploadSlotText}>Upload</Text>
                     </TouchableOpacity>
                   )}
@@ -680,7 +753,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveCheckin} activeOpacity={0.8}>
-                <Text style={styles.modalSaveText}>Save Check-In</Text>
+                <Text style={styles.modalSaveText}>Update</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -692,6 +765,51 @@ export default function ProfileScreen() {
         visible={calendarModalVisible}
         onClose={() => setCalendarModalVisible(false)}
       />
+
+      {/* 🖼️ CHANGE PROFILE PICTURE MODAL */}
+      <Modal
+        visible={avatarModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setAvatarModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Profile Picture</Text>
+              <TouchableOpacity onPress={() => setAvatarModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubText}>Select a photo preset or remove photo to use initials:</Text>
+
+            <View style={styles.avatarPresetGrid}>
+              {avatarPresets.map((uri, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    styles.avatarPresetSlot,
+                    profile?.avatarUrl === uri && styles.avatarPresetSlotActive,
+                  ]}
+                  onPress={() => handleSelectAvatar(uri)}
+                  activeOpacity={0.8}
+                >
+                  <Image source={{ uri }} style={styles.avatarPresetImg} />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.removeAvatarBtn}
+              onPress={() => handleSelectAvatar(undefined)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.removeAvatarBtnText}>Remove Photo (Use Initials)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <SettingsDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </View>
@@ -709,119 +827,196 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  /* CENTERED HERO HEADER (LARGER AVATAR) */
-  centeredHeroCard: {
+  /* COMPACT HORIZONTAL PROFILE HEADER */
+  profileHeaderCard: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#091512',
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 16,
-    paddingVertical: 10,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: '#10B98122',
   },
   avatarGoldBorder: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 3.5,
-    borderColor: '#EAB308',
-    padding: 4,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    borderWidth: 3,
+    borderColor: '#10B981',
+    padding: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#091512',
+    backgroundColor: '#06110D',
+    position: 'relative',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: '#06110D',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#10B981',
+  },
+  avatarPresetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  avatarPresetSlot: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  avatarPresetSlotActive: {
+    borderColor: '#10B981',
+  },
+  avatarPresetImg: {
+    width: '100%',
+    height: '100%',
+  },
+  removeAvatarBtn: {
+    backgroundColor: '#1E293B',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#EF444444',
+  },
+  removeAvatarBtnText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   centeredAvatarImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 50,
+    borderRadius: 75,
   },
   centeredAvatarPlaceholder: {
     width: '100%',
     height: '100%',
-    borderRadius: 50,
+    borderRadius: 75,
     backgroundColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
   },
   centeredAvatarText: {
     color: '#FFFFFF',
-    fontSize: 40,
+    fontSize: 75,
     fontWeight: 'bold',
   },
-  goldRolePill: {
-    backgroundColor: '#EAB308',
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 12,
-  },
-  goldRolePillText: {
-    color: '#06110D',
-    fontSize: 11,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
+  profileHeaderInfo: {
+    flex: 1,
+    justifyContent: 'center',
   },
   heroNameText: {
     color: '#F8FAFC',
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
-    marginTop: 8,
+    paddingLeft: 12,
   },
   heroSubText: {
     color: '#94A3B8',
-    fontSize: 13,
+    fontSize: 15,
     marginTop: 2,
+    paddingLeft: 12,
   },
 
-  /* TRAINER DETAILS SECTION */
-  trainerCodeCard: {
-    backgroundColor: '#091512',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#EAB30844',
-  },
-  linkedTrainerCard: {
+  /* Trainer Code Chip (Trainer account) */
+  trainerCodeChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#091512',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 14,
+    gap: 10,
+    marginTop: 12,
+    backgroundColor: '#06110D',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#EAB30844',
   },
-  trainerCardLabel: {
+  trainerCodeChipLabel: {
     color: '#EAB308',
     fontSize: 10,
     fontWeight: 'bold',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
-  trainerCodeVal: {
+  trainerCodeChipVal: {
     color: '#F8FAFC',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     fontFamily: 'monospace',
-    marginTop: 2,
+    marginTop: 1,
   },
-  trainerNameText: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  trainerCardSub: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginTop: 6,
-  },
-  searchIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#0F172A',
+  trainerCodeCopyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1E293B',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#EAB30844',
+  },
+
+  /* Linked Trainer Chip (Client account) */
+  linkedTrainerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    backgroundColor: '#06110D',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#10B98133',
+  },
+  linkedTrainerChipLabel: {
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.8,
+  },
+  linkedTrainerChipName: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 1,
+  },
+  linkedTrainerChipCode: {
+    color: '#64748B',
+    fontSize: 10,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  unlinkTrainerBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#2D1215',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#EF444444',
+  },
+  unlinkTrainerBtnText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 
   /* ACTION PILL ROW (2 PILLS) */
@@ -843,9 +1038,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#10B98166',
   },
-  calendarPillIcon: {
-    fontSize: 16,
-  },
   calendarPillText: {
     color: '#10B981',
     fontSize: 12.5,
@@ -861,9 +1053,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 14,
-  },
-  checkinPillIcon: {
-    fontSize: 16,
   },
   checkinPillText: {
     color: '#06110D',
@@ -931,12 +1120,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#06110D',
     borderRadius: 14,
     padding: 12,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#10B98122',
   },
   measureTileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     marginBottom: 8,
   },
@@ -954,6 +1145,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     fontFamily: 'monospace',
+    textAlign: 'center',
   },
   measureTileUnit: {
     color: '#64748B',

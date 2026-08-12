@@ -31,129 +31,90 @@ export const NutritionChart: React.FC = () => {
   let consumedFat = 0;
 
   todayMeals.forEach((meal) => {
-    consumedCalories += meal.totalCalories;
-    consumedProtein += meal.totalProteinG;
-    consumedCarbs += meal.totalCarbsG;
-    consumedFat += meal.totalFatG;
+    consumedCalories += meal.totalCalories || 0;
+    consumedProtein += meal.totalProteinG || 0;
+    consumedCarbs += meal.totalCarbsG || 0;
+    consumedFat += meal.totalFatG || 0;
   });
 
-  // Target values from store or fallback
-  const targetCalories = macroTargets.calories || 2400;
+  const targetCalories = macroTargets.calories || 2100;
   const targetProtein = macroTargets.protein || 180;
   const targetCarbs = macroTargets.carbs || 250;
-  const targetFat = macroTargets.fat || 65;
+  const targetFat = macroTargets.fat || 70;
 
-  const calPct = Math.min(1, Math.max(0, consumedCalories / targetCalories));
   const proteinPct = Math.min(100, Math.round((consumedProtein / targetProtein) * 100));
   const carbsPct = Math.min(100, Math.round((consumedCarbs / targetCarbs) * 100));
   const fatPct = Math.min(100, Math.round((consumedFat / targetFat) * 100));
 
-  // Expanded Arc Gauge Bounds (140x140, center 70, radius 52)
-  const svgSize = 140;
-  const strokeWidth = 11;
-  const radius = 52;
-  const center = svgSize / 2;
-  const startAngle = 120;
-  const totalArc = 285;
-
-  const trackPath = describeArc(center, center, radius, startAngle, startAngle + totalArc);
-  const fillEndAngle = startAngle + Math.max(1, totalArc * calPct);
-  const fillPath = describeArc(center, center, radius, startAngle, fillEndAngle);
+  const proteinKcal = Math.round(consumedProtein * 4);
+  const carbsKcal = Math.round(consumedCarbs * 4);
+  const fatKcal = Math.round(consumedFat * 9);
+  const remainingKcal = Math.max(0, targetCalories - consumedCalories);
+  const totalKcalTrack = Math.max(targetCalories, proteinKcal + carbsKcal + fatKcal + remainingKcal);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>Today's Nutrition</Text>
+      {/* Header Row: Title + Consumed / Target Subtitle & Remaining Pill */}
+      <View style={styles.energyFlowHeaderRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>Daily Energy & Macro Flow</Text>
+          <Text style={styles.energyFlowSub}>
+            {consumedCalories.toLocaleString()} of {targetCalories.toLocaleString()} kcal consumed
+          </Text>
+        </View>
+        <View style={styles.remainingPillBadge}>
+          <Text style={styles.remainingPillText}>
+            ⚡ {remainingKcal} left
+          </Text>
+        </View>
+      </View>
 
-      <View style={styles.contentRow}>
-        {/* Left Side: Enlarged Circular Golden Arc Gauge */}
-        <View style={styles.gaugeWrapper}>
-          <Svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`}>
-            {/* Dark background track */}
-            <Path
-              d={trackPath}
-              stroke="#212516"
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-              fill="none"
-            />
-            {/* Glowing Golden progress fill */}
-            {consumedCalories > 0 && (
-              <Path
-                d={fillPath}
-                stroke="#EAB308"
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
-                fill="none"
-              />
-            )}
-          </Svg>
+      {/* Proportional Segmented Progress Bar */}
+      <View style={styles.segmentedProgressBarTrack}>
+        {proteinKcal > 0 && (
+          <View style={[styles.segmentedFill, { flex: proteinKcal, backgroundColor: '#3B82F6' }]} />
+        )}
+        {carbsKcal > 0 && (
+          <View style={[styles.segmentedFill, { flex: carbsKcal, backgroundColor: '#A855F7' }]} />
+        )}
+        {fatKcal > 0 && (
+          <View style={[styles.segmentedFill, { flex: fatKcal, backgroundColor: '#F59E0B' }]} />
+        )}
+        {(remainingKcal > 0 || totalKcalTrack === 0) && (
+          <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remainingKcal), backgroundColor: '#1E293B' }]} />
+        )}
+      </View>
 
-          {/* Center Calorie Text with Consumed & Target Value */}
-          <View style={styles.gaugeCenter}>
-            <Text style={styles.calorieValue}>
-              {consumedCalories.toLocaleString()}
-            </Text>
-            <Text style={styles.calorieTargetText}>
-              / {targetCalories} KCAL
-            </Text>
+      {/* 3-Column Macro Details Grid */}
+      <View style={styles.macroPillGrid}>
+        {/* Protein */}
+        <View style={styles.macroPillCard}>
+          <View style={styles.macroPillHeader}>
+            <View style={[styles.macroDot, { backgroundColor: '#3B82F6' }]} />
+            <Text style={styles.macroPillLabel}>PROTEIN</Text>
           </View>
+          <Text style={styles.macroPillVal}>{Math.round(consumedProtein)}g / {targetProtein}g</Text>
+          <Text style={styles.macroPillSub}>{proteinKcal} kcal ({proteinPct}%)</Text>
         </View>
 
-        {/* Right Side: Macro Target Bars */}
-        <View style={styles.macroList}>
-          {/* Protein */}
-          <View style={styles.macroRow}>
-            <View style={styles.macroHeader}>
-              <Text style={styles.macroLabel}>PROTEIN</Text>
-              <Text style={styles.macroVal}>
-                {Math.round(consumedProtein)}/{targetProtein}g
-              </Text>
-            </View>
-            <View style={styles.track}>
-              <View
-                style={[
-                  styles.fill,
-                  { width: `${proteinPct}%`, backgroundColor: '#EAB308' },
-                ]}
-              />
-            </View>
+        {/* Carbs */}
+        <View style={styles.macroPillCard}>
+          <View style={styles.macroPillHeader}>
+            <View style={[styles.macroDot, { backgroundColor: '#A855F7' }]} />
+            <Text style={styles.macroPillLabel}>CARBS</Text>
           </View>
+          <Text style={styles.macroPillVal}>{Math.round(consumedCarbs)}g / {targetCarbs}g</Text>
+          <Text style={styles.macroPillSub}>{carbsKcal} kcal ({carbsPct}%)</Text>
+        </View>
 
-          {/* Carbs */}
-          <View style={styles.macroRow}>
-            <View style={styles.macroHeader}>
-              <Text style={styles.macroLabel}>CARBS</Text>
-              <Text style={styles.macroVal}>
-                {Math.round(consumedCarbs)}/{targetCarbs}g
-              </Text>
-            </View>
-            <View style={styles.track}>
-              <View
-                style={[
-                  styles.fill,
-                  { width: `${carbsPct}%`, backgroundColor: '#35664F' },
-                ]}
-              />
-            </View>
+        {/* Fat */}
+        <View style={styles.macroPillCard}>
+          <View style={styles.macroPillHeader}>
+            <View style={[styles.macroDot, { backgroundColor: '#F59E0B' }]} />
+            <Text style={styles.macroPillLabel}>FAT</Text>
           </View>
-
-          {/* Fats */}
-          <View style={styles.macroRow}>
-            <View style={styles.macroHeader}>
-              <Text style={styles.macroLabel}>FATS</Text>
-              <Text style={styles.macroVal}>
-                {Math.round(consumedFat)}/{targetFat}g
-              </Text>
-            </View>
-            <View style={styles.track}>
-              <View
-                style={[
-                  styles.fill,
-                  { width: `${fatPct}%`, backgroundColor: '#88B09A' },
-                ]}
-              />
-            </View>
-          </View>
+          <Text style={styles.macroPillVal}>{Math.round(consumedFat)}g / {targetFat}g</Text>
+          <Text style={styles.macroPillSub}>{fatKcal} kcal ({fatPct}%)</Text>
         </View>
       </View>
     </View>
@@ -162,86 +123,98 @@ export const NutritionChart: React.FC = () => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#0C140F',
+    backgroundColor: '#091512',
     borderRadius: 22,
-    padding: 20,
+    padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#19281F',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
+    borderColor: '#10B98133',
   },
   cardTitle: {
     color: '#F8FAFC',
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 16,
   },
-  contentRow: {
+  energyFlowHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 8,
   },
-  gaugeWrapper: {
-    width: 140,
-    height: 140,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  gaugeCenter: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  calorieValue: {
-    color: '#F8FAFC',
-    fontSize: 23,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  calorieTargetText: {
-    color: '#EAB308',
-    fontSize: 10.5,
-    fontWeight: 'bold',
-    letterSpacing: 0.8,
+  energyFlowSub: {
+    color: '#94A3B8',
+    fontSize: 11.5,
     marginTop: 2,
   },
-  macroList: {
-    flex: 1,
-    gap: 14,
+  remainingPillBadge: {
+    backgroundColor: '#06110D',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EAB30844',
   },
-  macroRow: {
-    gap: 6,
+  remainingPillText: {
+    color: '#EAB308',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
-  macroHeader: {
+  segmentedProgressBarTrack: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  macroLabel: {
-    color: '#DCE3DB',
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1.2,
-  },
-  macroVal: {
-    color: '#F1F5F9',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  track: {
-    height: 9,
-    backgroundColor: '#16271D',
-    borderRadius: 5,
+    height: 14,
+    backgroundColor: '#1E293B',
+    borderRadius: 7,
     overflow: 'hidden',
+    marginBottom: 16,
+    gap: 2,
   },
-  fill: {
+  segmentedFill: {
     height: '100%',
-    borderRadius: 5,
+    borderRadius: 2,
+  },
+  segmentedFillEmpty: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  macroPillGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  macroPillCard: {
+    flex: 1,
+    backgroundColor: '#06110D',
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#10B98122',
+  },
+  macroPillHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 4,
+  },
+  macroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  macroPillLabel: {
+    color: '#94A3B8',
+    fontSize: 9.5,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  macroPillVal: {
+    color: '#F8FAFC',
+    fontSize: 12.5,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+  },
+  macroPillSub: {
+    color: '#64748B',
+    fontSize: 9.5,
+    marginTop: 2,
   },
 });

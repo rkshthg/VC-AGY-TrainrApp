@@ -224,61 +224,82 @@ export default function NutritionScreen() {
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* 🥗 HERO MACRO TRACKER CARD (CONCEPT 3: SIDE-BY-SIDE COMPACT) */}
-        <View style={styles.heroMacroCard}>
-          <Text style={styles.heroTitle}>Daily Macro Tracker</Text>
+        {/* 🥗 HERO MACRO TRACKER CARD (CONCEPT 3: STACKED SEGMENTED ENERGY FLOW) */}
+        {(() => {
+          const proteinKcal = Math.round(totalProteinLogged * 4);
+          const carbsKcal = Math.round(totalCarbsLogged * 4);
+          const fatKcal = Math.round(totalFatLogged * 9);
+          const remainingKcal = Math.max(0, targetCalories - totalCaloriesLogged);
+          const totalKcalTrack = Math.max(targetCalories, proteinKcal + carbsKcal + fatKcal + remainingKcal);
 
-          <View style={styles.concept3Row}>
-            {/* Left Side: Circular Donut Ring Gauge */}
-            <View style={styles.calorieRingBox}>
-              <Text style={styles.ringKcalVal}>{totalCaloriesLogged}</Text>
-              <Text style={styles.ringKcalUnit}>kcal</Text>
-              <Text style={styles.ringKcalLeft}>{targetCalories - totalCaloriesLogged} left</Text>
+          return (
+            <View style={styles.heroMacroCard}>
+              {/* Header Row: Title + Consumed / Target Subtitle & Remaining Pill */}
+              <View style={styles.energyFlowHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.heroTitle}>Daily Energy & Macro Flow</Text>
+                  <Text style={styles.energyFlowSub}>
+                    {totalCaloriesLogged.toLocaleString()} of {targetCalories.toLocaleString()} kcal consumed
+                  </Text>
+                </View>
+                <View style={styles.remainingPillBadge}>
+                  <Text style={styles.remainingPillText}>
+                    ⚡ {remainingKcal} left
+                  </Text>
+                </View>
+              </View>
+
+              {/* Proportional Segmented Progress Bar */}
+              <View style={styles.segmentedProgressBarTrack}>
+                {proteinKcal > 0 && (
+                  <View style={[styles.segmentedFill, { flex: proteinKcal, backgroundColor: '#3B82F6' }]} />
+                )}
+                {carbsKcal > 0 && (
+                  <View style={[styles.segmentedFill, { flex: carbsKcal, backgroundColor: '#A855F7' }]} />
+                )}
+                {fatKcal > 0 && (
+                  <View style={[styles.segmentedFill, { flex: fatKcal, backgroundColor: '#F59E0B' }]} />
+                )}
+                {(remainingKcal > 0 || totalKcalTrack === 0) && (
+                  <View style={[styles.segmentedFillEmpty, { flex: Math.max(1, remainingKcal), backgroundColor: '#1E293B' }]} />
+                )}
+              </View>
+
+              {/* 3-Column Macro Details Grid */}
+              <View style={styles.macroPillGrid}>
+                {/* Protein */}
+                <View style={styles.macroPillCard}>
+                  <View style={styles.macroPillHeader}>
+                    <View style={[styles.macroDot, { backgroundColor: '#3B82F6' }]} />
+                    <Text style={styles.macroPillLabel}>PROTEIN</Text>
+                  </View>
+                  <Text style={styles.macroPillVal}>{Math.round(totalProteinLogged)}g / {targetProtein}g</Text>
+                  <Text style={styles.macroPillSub}>{proteinKcal} kcal ({proteinPct}%)</Text>
+                </View>
+
+                {/* Carbs */}
+                <View style={styles.macroPillCard}>
+                  <View style={styles.macroPillHeader}>
+                    <View style={[styles.macroDot, { backgroundColor: '#A855F7' }]} />
+                    <Text style={styles.macroPillLabel}>CARBS</Text>
+                  </View>
+                  <Text style={styles.macroPillVal}>{Math.round(totalCarbsLogged)}g / {targetCarbs}g</Text>
+                  <Text style={styles.macroPillSub}>{carbsKcal} kcal ({carbsPct}%)</Text>
+                </View>
+
+                {/* Fat */}
+                <View style={styles.macroPillCard}>
+                  <View style={styles.macroPillHeader}>
+                    <View style={[styles.macroDot, { backgroundColor: '#F59E0B' }]} />
+                    <Text style={styles.macroPillLabel}>FAT</Text>
+                  </View>
+                  <Text style={styles.macroPillVal}>{Math.round(totalFatLogged)}g / {targetFat}g</Text>
+                  <Text style={styles.macroPillSub}>{fatKcal} kcal ({fatPct}%)</Text>
+                </View>
+              </View>
             </View>
-
-            {/* Right Side: Stacked Macro Progress Bars */}
-            <View style={styles.macroStackBox}>
-              {/* Protein */}
-              <View style={styles.stackMacroItem}>
-                <View style={styles.stackMacroHeader}>
-                  <Text style={styles.stackMacroLabel}>🥩 Protein</Text>
-                  <Text style={styles.stackMacroVal}>
-                    {Math.round(totalProteinLogged)} / {targetProtein}g ({proteinPct}%)
-                  </Text>
-                </View>
-                <View style={styles.stackTrack}>
-                  <View style={[styles.stackFill, { width: `${proteinPct}%`, backgroundColor: '#3B82F6' }]} />
-                </View>
-              </View>
-
-              {/* Carbs */}
-              <View style={styles.stackMacroItem}>
-                <View style={styles.stackMacroHeader}>
-                  <Text style={styles.stackMacroLabel}>🍞 Carbs</Text>
-                  <Text style={styles.stackMacroVal}>
-                    {Math.round(totalCarbsLogged)} / {targetCarbs}g ({carbsPct}%)
-                  </Text>
-                </View>
-                <View style={styles.stackTrack}>
-                  <View style={[styles.stackFill, { width: `${carbsPct}%`, backgroundColor: '#A855F7' }]} />
-                </View>
-              </View>
-
-              {/* Fat */}
-              <View style={styles.stackMacroItem}>
-                <View style={styles.stackMacroHeader}>
-                  <Text style={styles.stackMacroLabel}>🥑 Fat</Text>
-                  <Text style={styles.stackMacroVal}>
-                    {Math.round(totalFatLogged)} / {targetFat}g ({fatPct}%)
-                  </Text>
-                </View>
-                <View style={styles.stackTrack}>
-                  <View style={[styles.stackFill, { width: `${fatPct}%`, backgroundColor: '#F59E0B' }]} />
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
+          );
+        })()}
 
         {/* DUAL LOG ACTION BUTTONS */}
         <View style={styles.actionRow}>
@@ -577,73 +598,87 @@ const styles = StyleSheet.create({
   macroCol: {
     flex: 1,
   },
-  concept3Row: {
+  energyFlowHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 10,
-  },
-  calorieRingBox: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#0C1E19',
-    borderWidth: 5,
-    borderColor: '#10B981',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 4,
-  },
-  ringKcalVal: {
-    color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
-    lineHeight: 20,
-  },
-  ringKcalUnit: {
-    color: '#A7F3D0',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  ringKcalLeft: {
-    color: '#10B981',
-    fontSize: 9.5,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  macroStackBox: {
-    flex: 1,
+    justifyContent: 'space-between',
+    marginBottom: 14,
     gap: 8,
   },
-  stackMacroItem: {
-    gap: 3,
+  energyFlowSub: {
+    color: '#94A3B8',
+    fontSize: 11.5,
+    marginTop: 2,
   },
-  stackMacroHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  remainingPillBadge: {
+    backgroundColor: '#06110D',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EAB30844',
   },
-  stackMacroLabel: {
-    color: '#CBD5E1',
+  remainingPillText: {
+    color: '#EAB308',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
-  stackMacroVal: {
+  segmentedProgressBarTrack: {
+    flexDirection: 'row',
+    height: 14,
+    backgroundColor: '#1E293B',
+    borderRadius: 7,
+    overflow: 'hidden',
+    marginBottom: 16,
+    gap: 2,
+  },
+  segmentedFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  segmentedFillEmpty: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  macroPillGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  macroPillCard: {
+    flex: 1,
+    backgroundColor: '#06110D',
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#10B98122',
+  },
+  macroPillHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 4,
+  },
+  macroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  macroPillLabel: {
+    color: '#94A3B8',
+    fontSize: 9.5,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  macroPillVal: {
     color: '#F8FAFC',
-    fontSize: 10,
+    fontSize: 12.5,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
-  stackTrack: {
-    height: 5,
-    backgroundColor: '#0F172A',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  stackFill: {
-    height: '100%',
-    borderRadius: 3,
+  macroPillSub: {
+    color: '#64748B',
+    fontSize: 9.5,
+    marginTop: 2,
   },
 
   actionRow: {

@@ -1,121 +1,69 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Image,
-  Modal,
-  Alert,
 } from 'react-native';
+import { usePathname } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
 
 interface HeaderBarProps {
   onOpenSettings: () => void;
+  title?: string;
 }
 
-export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenSettings }) => {
+export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenSettings, title }) => {
   const profile = useAuthStore((state) => state.profile);
   const role = useAuthStore((state) => state.role);
-  const setProfile = useAuthStore((state) => state.setProfile);
+  const pathname = usePathname();
 
-  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
+  const fullName = profile?.fullName ? profile.fullName.toUpperCase() : 'USER';
+  const firstName = fullName.split(' ')[0] || 'USER';
 
-  const name = profile?.fullName || 'User';
-
-  const avatarPresets = [
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200',
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
-  ];
-
-  const handleSelectAvatar = (url?: string) => {
-    if (!profile) return;
-    setProfile({
-      ...profile,
-      avatarUrl: url,
-    });
-    setAvatarModalVisible(false);
-    Alert.alert('Profile Picture Updated', 'Your profile picture has been updated!');
+  const getDynamicTitle = () => {
+    if (title) return title;
+    if (!pathname || pathname === '/' || pathname.includes('dashboard')) {
+      return `HEY, ${firstName}!`;
+    }
+    if (pathname.includes('nutrition')) return 'NUTRITION';
+    if (pathname.includes('workout')) return 'WORKOUT';
+    if (pathname.includes('clients')) return 'CLIENT ROSTER';
+    if (pathname.includes('profile')) return 'PROFILE';
+    return `HEY, ${firstName}!`;
   };
+
+  const displayTitle = getDynamicTitle();
 
   return (
     <View style={styles.container}>
+      {/* LEFT: PROFILE AVATAR */}
       <View style={styles.leftSection}>
-        {/* TAPPABLE PROFILE AVATAR ICON */}
-        <TouchableOpacity
-          onPress={() => setAvatarModalVisible(true)}
-          activeOpacity={0.8}
-          style={styles.avatarTouchable}
-        >
+        <View style={styles.avatarTouchable}>
           {profile?.avatarUrl ? (
             <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
           ) : (
             <View style={[styles.avatar, role === 'TRAINER' ? styles.avatarTrainer : styles.avatarClient]}>
-              <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+              <Text style={styles.avatarText}>{fullName.charAt(0).toUpperCase()}</Text>
             </View>
           )}
-          <View style={styles.cameraEditBadge}>
-            <Text style={styles.cameraEditBadgeIcon}>📷</Text>
-          </View>
-        </TouchableOpacity>
-
-        <View>
-          <Text style={styles.greetingText}>Hello, {name} 👋</Text>
-          <Text style={styles.roleBadge}>
-            {role === 'TRAINER' ? '⚡ Trainer Account' : '🏋️ Client Account'}
-          </Text>
         </View>
       </View>
 
+      {/* CENTER: DYNAMIC TITLE */}
+      <View style={styles.centerSection}>
+        <Text style={styles.greetingText} numberOfLines={1}>
+          {displayTitle}
+        </Text>
+      </View>
+
+      {/* RIGHT: HAMBURGER MENU */}
       <View style={styles.rightSection}>
         <TouchableOpacity style={styles.menuButton} onPress={onOpenSettings} activeOpacity={0.7}>
           <Text style={styles.menuIcon}>☰</Text>
         </TouchableOpacity>
       </View>
-
-      {/* PROFILE PICTURE PICKER MODAL */}
-      <Modal
-        visible={avatarModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setAvatarModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>🖼️ Change Profile Picture</Text>
-              <TouchableOpacity onPress={() => setAvatarModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalSub}>Select a profile photo preset or remove existing photo:</Text>
-
-            <View style={styles.presetGrid}>
-              {avatarPresets.map((uri, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[styles.presetSlot, profile?.avatarUrl === uri && styles.presetSlotActive]}
-                  onPress={() => handleSelectAvatar(uri)}
-                >
-                  <Image source={{ uri }} style={styles.presetImg} />
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={styles.removeBtn}
-                onPress={() => handleSelectAvatar(undefined)}
-              >
-                <Text style={styles.removeBtnText}>Remove Photo (Use Initials)</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -133,24 +81,30 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1E293B',
   },
   leftSection: {
-    flexDirection: 'row',
+    width: 46,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  centerSection: {
+    flex: 1,
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
   avatarTouchable: {
     position: 'relative',
   },
   avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarImage: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 2,
     borderColor: '#10B981',
   },
@@ -165,37 +119,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 18,
   },
-  cameraEditBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: '#1E293B',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#10B981',
-  },
-  cameraEditBadgeIcon: {
-    fontSize: 9,
-  },
   greetingText: {
     color: '#F8FAFC',
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: 'bold',
-  },
-  roleBadge: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
   rightSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    width: 46,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   menuButton: {
     width: 40,
@@ -208,78 +142,6 @@ const styles = StyleSheet.create({
   menuIcon: {
     color: '#F8FAFC',
     fontSize: 20,
-    fontWeight: 'bold',
-  },
-
-  /* MODAL STYLES */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  modalContent: {
-    backgroundColor: '#0F172A',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#10B98133',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  modalTitle: {
-    color: '#F8FAFC',
-    fontSize: 17,
-    fontWeight: 'bold',
-  },
-  modalCloseText: {
-    color: '#94A3B8',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  modalSub: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginBottom: 16,
-  },
-  presetGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 20,
-  },
-  presetSlot: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  presetSlotActive: {
-    borderColor: '#10B981',
-  },
-  presetImg: {
-    width: '100%',
-    height: '100%',
-  },
-  modalActionRow: {
-    gap: 10,
-  },
-  removeBtn: {
-    backgroundColor: '#1E293B',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  removeBtnText: {
-    color: '#EF4444',
-    fontSize: 13,
     fontWeight: 'bold',
   },
 });
