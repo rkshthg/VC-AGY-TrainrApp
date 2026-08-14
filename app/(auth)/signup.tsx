@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
 
@@ -30,6 +31,22 @@ export default function SignupScreen() {
     'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
     'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
   ];
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedAvatar(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.warn('ImagePicker error:', e);
+    }
+  };
 
   const handleSignup = () => {
     if (!email || !fullName) {
@@ -94,7 +111,7 @@ export default function SignupScreen() {
               styles.avatarPreviewBox,
               { borderColor: theme.isDark ? theme.accentGold : theme.primary },
             ]}
-            onPress={() => setSelectedAvatar(avatarPresets[0])}
+            onPress={pickImage}
           >
             {selectedAvatar ? (
               <Image source={{ uri: selectedAvatar }} style={styles.avatarPreviewImg} />
@@ -126,7 +143,7 @@ export default function SignupScreen() {
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
-            <Text style={[styles.avatarPickerHint, { color: theme.textMuted }]}>Choose a photo preset below:</Text>
+            <Text style={[styles.avatarPickerHint, { color: theme.textMuted }]}>Choose a preset or upload custom photo:</Text>
             <View style={styles.presetRow}>
               {avatarPresets.map((uri, idx) => (
                 <TouchableOpacity
@@ -142,6 +159,19 @@ export default function SignupScreen() {
                   <Image source={{ uri }} style={styles.presetImg} />
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={[
+                  styles.presetCircle,
+                  {
+                    backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  },
+                ]}
+                onPress={pickImage}
+              >
+                <Ionicons name="camera-outline" size={16} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
+              </TouchableOpacity>
             </View>
           </View>
         </View>

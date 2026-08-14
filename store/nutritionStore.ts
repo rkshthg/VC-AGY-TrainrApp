@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
+import { queueOfflineTransaction } from '../lib/offlineSync';
+import { useAuthStore } from './authStore';
 
 export interface FoodItem {
   id?: string;
@@ -36,6 +39,7 @@ interface NutritionState {
   macroTargets: MacroTargets;
   todayMeals: MealEntry[];
   isAnalyzing: boolean;
+  isLoading: boolean;
   pendingScanResult: {
     dishName: string;
     category?: 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACKS';
@@ -47,6 +51,7 @@ interface NutritionState {
     photoUri?: string;
   } | null;
 
+  fetchNutritionData: (userId: string, dateStr: string) => Promise<void>;
   setSelectedDate: (date: string) => void;
   setMacroTargets: (targets: MacroTargets) => void;
   saveMealEntry: (entry: Omit<MealEntry, 'id'>) => void;
@@ -58,82 +63,86 @@ interface NutritionState {
 export const useNutritionStore = create<NutritionState>((set, get) => ({
   selectedDate: new Date().toISOString().split('T')[0],
   macroTargets: {
-    calories: 2200,
-    protein: 150,
-    carbs: 220,
-    fat: 70,
+    calories: 2500,
+    protein: 75,
+    carbs: 250,
+    fat: 65,
   },
-  todayMeals: [
-    {
-      id: 'meal_breakfast_1',
-      userId: 'usr_1',
-      dishName: 'Breakfast',
-      category: 'BREAKFAST',
-      timestamp: new Date().toISOString(),
-      totalCalories: 440,
-      totalProteinG: 35,
-      totalCarbsG: 48,
-      totalFatG: 7,
-      items: [
-        {
-          id: 'item_1',
-          name: 'Oatmeal with Berries',
-          quantity: '150g',
-          calories: 320,
-          proteinG: 10,
-          carbsG: 45,
-          fatG: 5,
-        },
-        {
-          id: 'item_2',
-          name: 'Protein Shake',
-          quantity: '1 scoop',
-          calories: 120,
-          proteinG: 25,
-          carbsG: 3,
-          fatG: 2,
-        },
-      ],
-    },
-    {
-      id: 'meal_lunch_1',
-      userId: 'usr_1',
-      dishName: 'Lunch',
-      category: 'LUNCH',
-      timestamp: new Date().toISOString(),
-      totalCalories: 500,
-      totalProteinG: 24,
-      totalCarbsG: 44,
-      totalFatG: 20,
-      items: [
-        {
-          id: 'item_3',
-          name: 'Paneer Butter Masala',
-          quantity: '200g',
-          calories: 340,
-          proteinG: 19.8,
-          carbsG: 14,
-          fatG: 18.2,
-        },
-        {
-          id: 'item_4',
-          name: 'Wheat Chapati',
-          quantity: '2 pieces (60g)',
-          calories: 160,
-          proteinG: 4.2,
-          carbsG: 30,
-          fatG: 1.8,
-        },
-      ],
-    },
-  ],
+  todayMeals: [],
   isAnalyzing: false,
+  isLoading: false,
   pendingScanResult: null,
 
-  setSelectedDate: (selectedDate) => set({ selectedDate }),
-  setMacroTargets: (macroTargets) => set({ macroTargets }),
+  fetchNutritionData: async (userId: string, dateStr: string) => {
+    set({ isLoading: true });
+    try {
+      // Create a date range for "today"
+      const startOfDay = new Date(dateStr);
+      startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date(dateStr);
+      endOfDay.setHours(23,59,59,999);
 
-  saveMealEntry: (entryData) => {
+      const [mealsRes, targetsRes] = await Promise.all([
+        supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId)
+          .gte('created_at', startOfDay.toISOString())
+          .lte('created_at', endOfDay.toISOString()),
+        supabase.from('macro_targets').select('*').eq('user_id', userId).single()
+      ]);
+
+      const meals: MealEntry[] = (mealsRes.data || []).map(m => ({
+        id: m.id,
+        userId: m.user_id,
+        dishName: m.dish_name,
+        category: m.category as any,
+        timestamp: m.created_at,
+        photoUrl: m.photo_url,
+        totalCalories: m.total_calories,
+        totalProteinG: m.total_protein_g,
+        totalCarbsG: m.total_carbs_g,
+        totalFatG: m.total_fat_g,
+        items: (m.meal_items || []).map((i: any) => ({
+           id: i.id,
+           name: i.name,
+           quantity: i.quantity,
+           calories: i.calories,
+           proteinG: i.protein_g,
+           carbsG: i.carbs_g,
+           fatG: i.fat_g
+        }))
+      }));
+
+      const targets: MacroTargets = targetsRes.data ? {
+         calories: targetsRes.data.calories,
+         protein: targetsRes.data.protein_g,
+         carbs: targetsRes.data.carbs_g,
+         fat: targetsRes.data.fat_g
+      } : get().macroTargets;
+
+      set({ todayMeals: meals, macroTargets: targets, isLoading: false });
+    } catch (e) {
+      console.warn('Failed to fetch nutrition data', e);
+      set({ isLoading: false });
+    }
+  },
+
+  setSelectedDate: (selectedDate) => set({ selectedDate }),
+  
+  setMacroTargets: async (macroTargets) => {
+    set({ macroTargets });
+    const userId = useAuthStore.getState().profile?.id;
+    if (userId) {
+       supabase.from('macro_targets').upsert({
+         user_id: userId,
+         calories: macroTargets.calories,
+         protein_g: macroTargets.protein,
+         carbs_g: macroTargets.carbs,
+         fat_g: macroTargets.fat,
+         updated_at: new Date().toISOString()
+       }, { onConflict: 'user_id' }).then();
+    }
+  },
+
+  saveMealEntry: async (entryData) => {
     const newEntry: MealEntry = {
       ...entryData,
       id: 'meal_' + Date.now(),
@@ -142,12 +151,44 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       todayMeals: [newEntry, ...state.todayMeals],
       pendingScanResult: null,
     }));
+
+    const mealPayload = {
+      user_id: entryData.userId,
+      dish_name: entryData.dishName,
+      category: entryData.category,
+      photo_url: entryData.photoUrl,
+      total_calories: entryData.totalCalories,
+      total_protein_g: entryData.totalProteinG,
+      total_carbs_g: entryData.totalCarbsG,
+      total_fat_g: entryData.totalFatG,
+      created_at: entryData.timestamp
+    };
+
+    supabase.from('meals').insert(mealPayload).select('id').single()
+      .then(({ data, error }) => {
+        if (error) {
+           queueOfflineTransaction('LOG_MEAL', { ...mealPayload, items: entryData.items });
+        } else if (data && entryData.items.length > 0) {
+           const itemsPayload = entryData.items.map(item => ({
+             meal_id: data.id,
+             name: item.name,
+             quantity: item.quantity,
+             calories: item.calories,
+             protein_g: item.proteinG,
+             carbs_g: item.carbsG,
+             fat_g: item.fatG
+           }));
+           supabase.from('meal_items').insert(itemsPayload).then();
+        }
+      });
   },
 
-  deleteMealEntry: (id) =>
+  deleteMealEntry: (id) => {
     set((state) => ({
       todayMeals: state.todayMeals.filter((m) => m.id !== id),
-    })),
+    }));
+    supabase.from('meals').delete().eq('id', id).then();
+  },
 
   setPendingScanResult: (pendingScanResult) => set({ pendingScanResult }),
   clearPendingScanResult: () => set({ pendingScanResult: null }),

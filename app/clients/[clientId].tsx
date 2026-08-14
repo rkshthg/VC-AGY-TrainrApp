@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Image,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,21 +48,29 @@ export default function ClientInspectionDetailScreen() {
 
   const handleUnlink = () => {
     if (!client) return;
-    Alert.alert(
-      'Unlink Client',
-      `Are you sure you want to drop ${client.fullName} from your client roster?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unlink Client',
-          style: 'destructive',
-          onPress: () => {
-            unlinkClient(client.clientId);
-            router.replace('/(tabs)/clients');
+    if (Platform.OS === 'web') {
+      const confirmUnlink = window.confirm(`Are you sure you want to drop ${client.fullName} from your client roster?`);
+      if (confirmUnlink) {
+        unlinkClient(client.clientId);
+        router.replace('/(tabs)/clients');
+      }
+    } else {
+      Alert.alert(
+        'Unlink Client',
+        `Are you sure you want to drop ${client.fullName} from your client roster?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Unlink Client',
+            style: 'destructive',
+            onPress: () => {
+              unlinkClient(client.clientId);
+              router.replace('/(tabs)/clients');
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const handleSaveTargets = () => {
@@ -649,14 +658,21 @@ export default function ClientInspectionDetailScreen() {
                     <TouchableOpacity
                       style={styles.deletePhotoBadge}
                       onPress={() => {
-                        Alert.alert(
-                          'Delete Check-In Photo',
-                          'Are you sure you want to remove this transformation photo?',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete', style: 'destructive', onPress: () => deleteCheckinPhoto(photo.id) },
-                          ]
-                        );
+                        if (Platform.OS === 'web') {
+                          const confirmDelete = window.confirm('Are you sure you want to remove this transformation photo?');
+                          if (confirmDelete) {
+                            deleteCheckinPhoto(photo.id);
+                          }
+                        } else {
+                          Alert.alert(
+                            'Delete Check-In Photo',
+                            'Are you sure you want to remove this transformation photo?',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => deleteCheckinPhoto(photo.id) },
+                            ]
+                          );
+                        }
                       }}
                       activeOpacity={0.8}
                     >

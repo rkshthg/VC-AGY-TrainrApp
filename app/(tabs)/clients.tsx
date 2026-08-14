@@ -27,7 +27,10 @@ export default function ClientsScreen() {
 
   // Target Editor Modal state
   const [targetModalClient, setTargetModalClient] = useState<ClientSummaryCard | null>(null);
-  const [targetCaloriesInput, setTargetCaloriesInput] = useState<string>('2100');
+  const [targetCaloriesInput, setTargetCaloriesInput] = useState<string>('2500');
+  const [targetProteinInput, setTargetProteinInput] = useState<string>('75');
+  const [targetCarbsInput, setTargetCarbsInput] = useState<string>('250');
+  const [targetFatInput, setTargetFatInput] = useState<string>('65');
 
   const totalClients = clients.length;
   const actionRequired = clients.filter((c) => c.status === 'NEEDS_ATTENTION').length;
@@ -48,17 +51,24 @@ export default function ClientsScreen() {
 
   const handleOpenTargetModal = (client: ClientSummaryCard) => {
     setTargetModalClient(client);
-    setTargetCaloriesInput(String(client.targetCalories || 2100));
+    setTargetCaloriesInput(String(client.targetCalories || 2500));
+    setTargetProteinInput(String(client.targetProtein || 75));
+    setTargetCarbsInput(String(client.targetCarbs || 250));
+    setTargetFatInput(String(client.targetFat || 65));
   };
 
   const handleSaveTargets = () => {
     if (!targetModalClient) return;
-    const calories = parseInt(targetCaloriesInput) || 2100;
+    const calories = parseInt(targetCaloriesInput) || 2500;
+    const protein = parseFloat(targetProteinInput) || 75;
+    const carbs = parseFloat(targetCarbsInput) || 250;
+    const fat = parseFloat(targetFatInput) || 65;
+
     updateClientMacroTargets(targetModalClient.clientId, {
       calories,
-      protein: Math.round((calories * 0.3) / 4),
-      carbs: Math.round((calories * 0.4) / 4),
-      fat: Math.round((calories * 0.3) / 9),
+      protein,
+      carbs,
+      fat,
     });
     setTargetModalClient(null);
     Alert.alert('Targets Updated', `Updated macro targets for ${targetModalClient.fullName}.`);
@@ -616,6 +626,59 @@ export default function ClientsScreen() {
               value={targetCaloriesInput}
               keyboardType="numeric"
               onChangeText={setTargetCaloriesInput}
+              placeholder="2500"
+              placeholderTextColor={theme.textMuted}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Protein Target (g):</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={targetProteinInput}
+              keyboardType="numeric"
+              onChangeText={setTargetProteinInput}
+              placeholder="75"
+              placeholderTextColor={theme.textMuted}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Carbohydrates Target (g):</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={targetCarbsInput}
+              keyboardType="numeric"
+              onChangeText={setTargetCarbsInput}
+              placeholder="250"
+              placeholderTextColor={theme.textMuted}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Fat Target (g):</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={targetFatInput}
+              keyboardType="numeric"
+              onChangeText={setTargetFatInput}
+              placeholder="65"
+              placeholderTextColor={theme.textMuted}
             />
 
             <View style={styles.modalActionRow}>

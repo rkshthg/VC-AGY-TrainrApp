@@ -94,11 +94,61 @@ export default function WorkoutScreen() {
 
   // Quick KPI Stats Calculations
   const totalVolumeKg = workoutHistory.reduce((acc, h) => acc + (h.totalVolumeKg || 0), 0);
-  const sessionsThisWeekCount = workoutHistory.filter((h) => {
-    const sessionTime = new Date(h.date).getTime();
-    const sevenDaysAgo = Date.now() - 7 * 86400000;
-    return sessionTime >= sevenDaysAgo;
-  }).length;
+  
+  // Workouts This Week: Mon to Today
+  const getWorkoutsThisWeekCount = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? 6 : day - 1;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+
+    const loggedDates = new Set<string>();
+    workoutHistory.forEach((item) => {
+      const itemDate = new Date(item.date);
+      if (itemDate >= monday && itemDate <= now) {
+        loggedDates.add(itemDate.toISOString().split('T')[0]);
+      }
+    });
+    return loggedDates.size;
+  };
+
+  const workoutsThisWeekCount = getWorkoutsThisWeekCount();
+
+  // Active Streak Calculation (consecutive logged days)
+  const getActiveStreakDays = () => {
+    if (!workoutHistory || workoutHistory.length === 0) return 0;
+
+    const loggedDatesSet = new Set(
+      workoutHistory.map((h) => new Date(h.date).toISOString().split('T')[0])
+    );
+
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let checkDate = new Date(today);
+    const todayStr = checkDate.toISOString().split('T')[0];
+
+    if (!loggedDatesSet.has(todayStr)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    while (true) {
+      const dateStr = checkDate.toISOString().split('T')[0];
+      if (loggedDatesSet.has(dateStr)) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  };
+
+  const activeStreak = getActiveStreakDays();
 
   const handleStartFreestyle = () => {
     startSession();
@@ -112,10 +162,17 @@ export default function WorkoutScreen() {
   };
 
   const handleDeletePlan = (planId: string, title: string) => {
-    Alert.alert('Delete Workout Routine', `Are you sure you want to remove "${title}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deletePlan(planId) },
-    ]);
+    if (Platform.OS === 'web') {
+      const confirmDelete = window.confirm(`Are you sure you want to remove "${title}"?`);
+      if (confirmDelete) {
+        deletePlan(planId);
+      }
+    } else {
+      Alert.alert('Delete Workout Routine', `Are you sure you want to remove "${title}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deletePlan(planId) },
+      ]);
+    }
   };
 
   return (
@@ -137,8 +194,8 @@ export default function WorkoutScreen() {
           {/* Workouts This Week */}
           <View style={styles.kpiCard}>
             <Text style={[styles.kpiLabel, { color: theme.textSecondary }]}>WORKOUTS THIS WEEK</Text>
-            <Text style={[styles.kpiVal, { color: theme.text }]}>{sessionsThisWeekCount} / 4</Text>
-            <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Past 7 Days</Text>
+            <Text style={[styles.kpiVal, { color: theme.text }]}>{workoutsThisWeekCount} / 4</Text>
+            <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Mon – Today</Text>
           </View>
 
           <View style={[styles.kpiDivider, { backgroundColor: theme.border }]} />
@@ -164,7 +221,7 @@ export default function WorkoutScreen() {
                 { color: theme.isDark ? theme.accentGold : theme.primary },
               ]}
             >
-              4 Days
+              {activeStreak} {activeStreak === 1 ? 'Day' : 'Days'}
             </Text>
             <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Consistent</Text>
           </View>

@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import { TagPill } from '../components/ClientActivityCard';
+import { supabase } from '../lib/supabase';
+import { queueOfflineTransaction } from '../lib/offlineSync';
+import { useAuthStore } from './authStore';
 
 export interface ClientSummaryCard {
   clientId: string;
@@ -11,6 +14,9 @@ export interface ClientSummaryCard {
   lastActive: string; // ISO String
   todayCaloriesLogged: number;
   targetCalories: number;
+  targetProtein?: number;
+  targetCarbs?: number;
+  targetFat?: number;
   todayWorkoutDone: boolean;
 }
 
@@ -28,6 +34,7 @@ export interface LiveFeedEventCard {
   eventType: 'LOG_MEAL' | 'FINISH_WORKOUT' | 'UPLOAD_CHECKIN' | 'UPDATE_MEASUREMENTS' | 'MISSED_WORKOUT';
   timestamp: string;
   photoUrl?: string;
+  breakdownItems?: { title: string; subtitle: string; value: string }[];
   updatedValues?: { label: string; value: string }[];
   detailPayload?: any;
 }
@@ -36,9 +43,10 @@ interface TrainerState {
   clients: ClientSummaryCard[];
   liveFeedCards: LiveFeedEventCard[];
   inspectingClientId: string | null;
+  isLoading: boolean;
 
-  fetchRoster: () => void;
-  addLiveFeedEvent: (event: Omit<LiveFeedEventCard, 'id'>) => void;
+  fetchRoster: () => Promise<void>;
+  addLiveFeedEvent: (event: Omit<LiveFeedEventCard, 'id' | 'timeAgo'>) => void;
   toggleAcknowledgeEvent: (eventId: string) => void;
   inspectClient: (clientId: string | null) => void;
   updateClientMacroTargets: (clientId: string, targets: { calories: number; protein: number; carbs: number; fat: number }) => void;
@@ -47,147 +55,168 @@ interface TrainerState {
   unlinkClient: (clientId: string) => void;
 }
 
-export const useTrainerStore = create<TrainerState>((set, get) => ({
-  clients: [
-    {
-      clientId: 'cli_101',
-      fullName: 'Sarah J.',
-      email: 'sarah@example.com',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      currentPlanTitle: 'Chest & Triceps Hypertrophy',
-      status: 'ON_TRACK',
-      lastActive: new Date().toISOString(),
-      todayCaloriesLogged: 1850,
-      targetCalories: 2100,
-      todayWorkoutDone: true,
-    },
-    {
-      clientId: 'cli_102',
-      fullName: 'Mike T.',
-      email: 'mike@example.com',
-      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-      currentPlanTitle: 'Macro Bowl Nutrition Plan',
-      status: 'ON_TRACK',
-      lastActive: new Date(Date.now() - 2700000).toISOString(),
-      todayCaloriesLogged: 1420,
-      targetCalories: 2400,
-      todayWorkoutDone: true,
-    },
-    {
-      clientId: 'cli_103',
-      fullName: 'David R.',
-      email: 'david@example.com',
-      avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-      currentPlanTitle: 'Leg Day Hypertrophy',
-      status: 'NEEDS_ATTENTION',
-      lastActive: new Date(Date.now() - 7200000).toISOString(),
-      todayCaloriesLogged: 600,
-      targetCalories: 2500,
-      todayWorkoutDone: false,
-    },
-  ],
-  liveFeedCards: [
-    {
-      id: 'feed_0',
-      clientId: 'cli_101',
-      clientName: 'Sarah J.',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      timeAgo: '2m ago',
-      actionVerb: 'logged',
-      targetTitle: 'a Transformation',
-      eventType: 'UPLOAD_CHECKIN',
-      tags: [
-        { label: 'Check-In', type: 'success' },
-        { label: 'Transformation', type: 'success' },
-      ],
-      photoUrl: 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400',
-      updatedValues: [
-        { label: 'Body Weight', value: '74.2 kg' },
-        { label: 'Height', value: '175 cm' },
-        { label: 'Biceps L', value: '37.0 cm' },
-        { label: 'Biceps R', value: '37.5 cm' },
-        { label: 'Waist', value: '84 cm' },
-      ],
-      timestamp: new Date(Date.now() - 120000).toISOString(),
-    },
-    {
-      id: 'feed_1',
-      clientId: 'cli_101',
-      clientName: 'Sarah J.',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      timeAgo: '10m ago',
-      actionVerb: 'Logged',
-      targetTitle: 'Chest & Triceps Hypertrophy',
-      eventType: 'FINISH_WORKOUT',
-      tags: [
-        { label: 'Strength', type: 'success' },
-        { label: 'PR Hit', type: 'success' },
-      ],
-      timestamp: new Date().toISOString(),
-    },
-    {
-      id: 'feed_2',
-      clientId: 'cli_102',
-      clientName: 'Mike T.',
-      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-      timeAgo: '45m ago',
-      actionVerb: 'Logged',
-      targetTitle: 'Macro Bowl Lunch',
-      eventType: 'LOG_MEAL',
-      tags: [
-        { label: 'Nutrition', type: 'success' },
-        { label: 'On Track', type: 'success' },
-      ],
-      timestamp: new Date(Date.now() - 2700000).toISOString(),
-    },
-    {
-      id: 'feed_3',
-      clientId: 'cli_103',
-      clientName: 'David R.',
-      avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-      timeAgo: '2h ago',
-      actionVerb: 'Missed Scheduled Workout:',
-      targetTitle: 'Leg Day',
-      isAlert: true,
-      eventType: 'MISSED_WORKOUT',
-      tags: [
-        { label: 'Action Required', type: 'alert' },
-      ],
-      timestamp: new Date(Date.now() - 7200000).toISOString(),
-    },
-  ],
-  inspectingClientId: null,
+// Basic formatter for time ago locally since timeAgo is derived
+function formatTimeAgo(isoString: string): string {
+   const mins = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000);
+   if (mins < 60) return `${mins}m ago`;
+   if (mins < 1440) return `${Math.floor(mins/60)}h ago`;
+   return `${Math.floor(mins/1440)}d ago`;
+}
 
-  fetchRoster: () => {
-    // In production, queries Supabase for clients assigned to auth.uid()
+export const useTrainerStore = create<TrainerState>((set, get) => ({
+  clients: [],
+  liveFeedCards: [],
+  inspectingClientId: null,
+  isLoading: false,
+
+  fetchRoster: async () => {
+    set({ isLoading: true });
+    try {
+      const trainerId = useAuthStore.getState().profile?.id;
+      if (!trainerId) {
+        set({ isLoading: false });
+        return;
+      }
+
+      // Fetch active clients
+      const { data: clientsData, error } = await supabase
+        .from('trainer_clients')
+        .select(`
+           client_id,
+           users!trainer_clients_client_id_fkey(full_name, email, avatar_url, updated_at),
+           macro_targets:macro_targets!user_id(calories, protein_g, carbs_g, fat_g)
+        `)
+        .eq('trainer_id', trainerId)
+        .eq('status', 'ACTIVE');
+      
+      const parsedClients: ClientSummaryCard[] = (clientsData || []).map((c: any) => ({
+         clientId: c.client_id,
+         fullName: c.users?.full_name || 'Unknown',
+         email: c.users?.email || '',
+         avatarUrl: c.users?.avatar_url,
+         status: 'ON_TRACK',
+         lastActive: c.users?.updated_at || new Date().toISOString(),
+         todayCaloriesLogged: 0, // Need aggregation queries for this later
+         targetCalories: c.macro_targets?.[0]?.calories || 2500,
+         targetProtein: c.macro_targets?.[0]?.protein_g,
+         targetCarbs: c.macro_targets?.[0]?.carbs_g,
+         targetFat: c.macro_targets?.[0]?.fat_g,
+         todayWorkoutDone: false
+      }));
+
+      // Fetch live feed
+      const { data: feedData } = await supabase
+        .from('trainer_feed_events')
+        .select('*')
+        .eq('trainer_id', trainerId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+        
+      const parsedFeed: LiveFeedEventCard[] = (feedData || []).map((f: any) => {
+         const relatedClient = parsedClients.find(c => c.clientId === f.client_id);
+         return {
+            id: f.id,
+            clientId: f.client_id,
+            clientName: relatedClient?.fullName || 'Client',
+            avatarUrl: relatedClient?.avatarUrl,
+            timeAgo: formatTimeAgo(f.created_at),
+            actionVerb: f.action_verb,
+            targetTitle: f.target_title,
+            isAlert: f.is_alert,
+            isAcknowledged: f.is_acknowledged,
+            tags: [],
+            eventType: f.event_type as any,
+            timestamp: f.created_at,
+            photoUrl: f.photo_url,
+            ...f.metadata
+         };
+      });
+
+      set({ clients: parsedClients, liveFeedCards: parsedFeed, isLoading: false });
+    } catch (e) {
+       console.warn('Failed to fetch roster', e);
+       set({ isLoading: false });
+    }
   },
 
-  addLiveFeedEvent: (eventData) => {
+  addLiveFeedEvent: async (eventData) => {
+    const timestamp = eventData.timestamp || new Date().toISOString();
     const newEvent: LiveFeedEventCard = {
       ...eventData,
       id: 'feed_' + Date.now(),
+      timeAgo: 'Just now',
+      timestamp
     };
+    
     set((state) => ({
       liveFeedCards: [newEvent, ...state.liveFeedCards],
     }));
+
+    const trainerId = useAuthStore.getState().profile?.linkedTrainerId; // For clients logging events
+    if (trainerId) {
+      const payload = {
+        trainer_id: trainerId,
+        client_id: eventData.clientId,
+        event_type: eventData.eventType,
+        action_verb: eventData.actionVerb,
+        target_title: eventData.targetTitle,
+        is_alert: eventData.isAlert || false,
+        is_acknowledged: false,
+        photo_url: eventData.photoUrl,
+        metadata: {
+           breakdownItems: eventData.breakdownItems,
+           updatedValues: eventData.updatedValues,
+           detailPayload: eventData.detailPayload
+        },
+        created_at: timestamp
+      };
+
+      const { error } = await supabase.from('trainer_feed_events').insert(payload);
+      if (error) {
+         queueOfflineTransaction('FEED_EVENT', payload);
+      }
+    }
   },
 
-  toggleAcknowledgeEvent: (eventId: string) => {
+  toggleAcknowledgeEvent: async (eventId: string) => {
     set((state) => ({
       liveFeedCards: state.liveFeedCards.map((card) =>
         card.id === eventId ? { ...card, isAcknowledged: !card.isAcknowledged } : card
       ),
     }));
+    
+    // Optimistic, no offline queue needed just for acks
+    const current = get().liveFeedCards.find(c => c.id === eventId);
+    if (current && !eventId.startsWith('feed_')) {
+       supabase.from('trainer_feed_events').update({ is_acknowledged: current.isAcknowledged }).eq('id', eventId).then();
+    }
   },
 
   inspectClient: (clientId) => set({ inspectingClientId: clientId }),
 
-  updateClientMacroTargets: (clientId, targets) => {
+  updateClientMacroTargets: async (clientId, targets) => {
     set((state) => ({
       clients: state.clients.map((c) =>
-        c.clientId === clientId ? { ...c, targetCalories: targets.calories } : c
+        c.clientId === clientId
+          ? {
+              ...c,
+              targetCalories: targets.calories,
+              targetProtein: targets.protein,
+              targetCarbs: targets.carbs,
+              targetFat: targets.fat,
+            }
+          : c
       ),
     }));
+    
+    await supabase.from('macro_targets').upsert({
+      user_id: clientId,
+      calories: targets.calories,
+      protein_g: targets.protein,
+      carbs_g: targets.carbs,
+      fat_g: targets.fat,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
   },
 
   removePhotoFromLiveFeed: (photoUrl) => {
@@ -208,10 +237,19 @@ export const useTrainerStore = create<TrainerState>((set, get) => ({
     }));
   },
 
-  unlinkClient: (clientId: string) => {
+  unlinkClient: async (clientId: string) => {
     set((state) => ({
       clients: state.clients.filter((c) => c.clientId !== clientId),
       inspectingClientId: state.inspectingClientId === clientId ? null : state.inspectingClientId,
     }));
+    
+    const trainerId = useAuthStore.getState().profile?.id;
+    if (trainerId) {
+      supabase.from('trainer_clients')
+        .update({ status: 'UNLINKED' })
+        .eq('trainer_id', trainerId)
+        .eq('client_id', clientId)
+        .then();
+    }
   },
 }));

@@ -9,8 +9,10 @@ import {
   Alert,
   Modal,
   TextInput,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { HeaderBar } from '../../components/HeaderBar';
 import { SettingsDrawer } from '../../components/SettingsDrawer';
 import { CalendarLogModal } from '../../components/CalendarLogModal';
@@ -20,9 +22,17 @@ import { useProgressStore, CheckinPhoto } from '../../store/progressStore';
 import { useWorkoutStore } from '../../store/workoutStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
+import {
+  formatWeight,
+  formatLength,
+  formatHeight,
+  formatVolume,
+  getWeightUnitLabel,
+  getLengthUnitLabel,
+} from '../../lib/units';
 
 export default function ProfileScreen() {
-  const { profile, role, trainerCode, setProfile } = useAuthStore();
+  const { profile, role, trainerCode, linkedTrainerId, setProfile, unitSystem, unlinkTrainer, linkTrainer } = useAuthStore();
   const theme = useTheme();
   const {
     weightHistory,
@@ -43,7 +53,11 @@ export default function ProfileScreen() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
-  const [viewingPhoto, setViewingPhoto] = useState<CheckinPhoto | null>(null);
+  const [viewingPhoto, setViewingPhoto] = useState<{ id: string; date: string; photoUrls: string[]; note?: string } | null>(null);
+  const [viewingPhotoIndex, setViewingPhotoIndex] = useState(0);
+  const [linkTrainerModalVisible, setLinkTrainerModalVisible] = useState(false);
+  const [trainerCodeInput, setTrainerCodeInput] = useState('');
+  const [isLinking, setIsLinking] = useState(false);
   const [expandedTimelineIds, setExpandedTimelineIds] = useState<string[]>(['PHOTO_pic_1']);
 
   const toggleTimelineExpand = (id: string) => {
@@ -71,6 +85,21 @@ export default function ProfileScreen() {
     Alert.alert('Profile Picture Updated', 'Your profile picture has been updated!');
   };
 
+  const handleLinkTrainer = async () => {
+    if (!trainerCodeInput.trim()) {
+      Alert.alert('Error', 'Please enter a trainer code.');
+      return;
+    }
+    setIsLinking(true);
+    const success = await linkTrainer(trainerCodeInput.trim().toUpperCase());
+    setIsLinking(false);
+    if (success) {
+      Alert.alert('Success', 'Successfully linked with trainer.');
+      setLinkTrainerModalVisible(false);
+      setTrainerCodeInput('');
+    }
+  };
+
   // Check-In Modal state (All optional, start empty with placeholders showing current values)
   const [checkinModalVisible, setCheckinModalVisible] = useState(false);
   const [heightInput, setHeightInput] = useState('');
@@ -83,9 +112,7 @@ export default function ProfileScreen() {
   const [bicepsRInput, setBicepsRInput] = useState('');
   const [thighsLInput, setThighsLInput] = useState('');
   const [thighsRInput, setThighsRInput] = useState('');
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([
-    'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400',
-  ]);
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
 
   const stats = getCalculatedMetrics({
     heightCm: profile?.heightCm || 175,
@@ -97,17 +124,32 @@ export default function ProfileScreen() {
     activityLevel: profile?.activityLevel || 'MODERATELY_ACTIVE',
   });
 
-  const handleAddSamplePhoto = () => {
+  const handlePickPhotos = async () => {
     if (uploadedPhotos.length >= 3) {
       Alert.alert('Photo Limit Reached', 'You can upload up to 3 transformation check-in photos per entry.');
       return;
     }
-    const sampleImgs = [
-      'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400',
-      'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400',
-    ];
-    const nextImg = sampleImgs[uploadedPhotos.length - 1] || sampleImgs[0];
-    setUploadedPhotos([...uploadedPhotos, nextImg]);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Permission to access photo library is required.');
+        return;
+      }
+      const remainingSlots = 3 - uploadedPhotos.length;
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        selectionLimit: remainingSlots,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const newUris = result.assets.map((a: ImagePicker.ImagePickerAsset) => a.uri).slice(0, remainingSlots);
+        setUploadedPhotos((prev) => [...prev, ...newUris].slice(0, 3));
+      }
+    } catch (e) {
+      console.warn('ImagePicker error:', e);
+    }
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -115,6 +157,12 @@ export default function ProfileScreen() {
   };
 
   const handleSaveCheckin = () => {
+    const userId = profile?.id;
+    if (!userId) {
+      Alert.alert('Error', 'User profile not found.');
+      return;
+    }
+
     const parsedHeight = parseFloat(heightInput);
     const parsedWeight = parseFloat(weightInput);
     const parsedNeck = parseFloat(neckInput);
@@ -138,20 +186,20 @@ export default function ProfileScreen() {
     if (!isNaN(parsedThighsR) && parsedThighsR > 0) measurementsToUpdate.thighsRCm = parsedThighsR;
 
     // Log complete check-in entry with all updated fields
-    addCheckinLog({
+    addCheckinLog(userId, {
       weightKg: !isNaN(parsedWeight) && parsedWeight > 0 ? parsedWeight : undefined,
       heightCm: !isNaN(parsedHeight) && parsedHeight > 0 ? parsedHeight : undefined,
       photoUrl: uploadedPhotos.length > 0 ? uploadedPhotos[0] : undefined,
+      photoUrls: uploadedPhotos.length > 0 ? uploadedPhotos : undefined,
       measurements: Object.keys(measurementsToUpdate).length > 0 ? measurementsToUpdate : undefined,
+      note: 'Transformation Check-In',
     });
 
     if (!isNaN(parsedWeight) && parsedWeight > 0) {
-      addWeightLog(parsedWeight);
       updatedSummaryList.push(`${parsedWeight} kg`);
     }
 
     if (Object.keys(measurementsToUpdate).length > 0) {
-      updateMeasurements(measurementsToUpdate);
       updatedSummaryList.push('Body Measurements');
     }
 
@@ -163,9 +211,6 @@ export default function ProfileScreen() {
       updatedSummaryList.push(`Height: ${parsedHeight}cm`);
     }
 
-    uploadedPhotos.forEach((uri) => {
-      addCheckinPhoto(uri, 'Transformation Check-In');
-    });
     if (uploadedPhotos.length > 0) {
       updatedSummaryList.push(`${uploadedPhotos.length} Photo(s)`);
     }
@@ -210,7 +255,6 @@ export default function ProfileScreen() {
       clientId: profile?.id || 'usr_1',
       clientName: profile?.fullName || 'Client',
       eventType: 'UPLOAD_CHECKIN',
-      timeAgo: 'Just now',
       actionVerb: 'logged',
       targetTitle: 'Transformation Check-In',
       tags: [
@@ -342,44 +386,96 @@ export default function ProfileScreen() {
             )}
 
             {/* Linked Trainer Chip */}
-            <View
-              style={[
-                styles.linkedTrainerChip,
-                {
-                  backgroundColor: theme.cardInner,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.linkedTrainerChipLabel,
-                    { color: theme.isDark ? theme.accentGold : theme.primary },
-                  ]}
-                >
-                  LINKED TRAINER
-                </Text>
-                <Text style={[styles.linkedTrainerChipName, { color: theme.text }]}>Coach Marcus Vance</Text>
-                <Text style={[styles.linkedTrainerChipCode, { color: theme.textMuted }]}>Code: MV-7X21</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.unlinkTrainerBtn}
-                onPress={() => {
-                  Alert.alert(
-                    'Unlink Trainer',
-                    'Are you sure you want to unlink from Coach Marcus Vance?',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Unlink', style: 'destructive', onPress: () => { } },
-                    ]
-                  );
-                }}
-                activeOpacity={0.7}
+            {linkedTrainerId ? (
+              <View
+                style={[
+                  styles.linkedTrainerChip,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
               >
-                <Ionicons name="close-outline" size={16} color={theme.textSecondary} />
-              </TouchableOpacity>
-            </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.linkedTrainerChipLabel,
+                      { color: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    LINKED TRAINER
+                  </Text>
+                  <Text style={[styles.linkedTrainerChipName, { color: theme.text }]}>
+                    Active Trainer ({linkedTrainerId})
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.unlinkTrainerBtn}
+                  onPress={() => {
+                    if (Platform.OS === 'web') {
+                      const confirmUnlink = window.confirm('Are you sure you want to unlink from your trainer?');
+                      if (confirmUnlink) {
+                        unlinkTrainer().then(() => {
+                          Alert.alert('Unlinked', 'Trainer unlinked successfully.');
+                        });
+                      }
+                    } else {
+                      Alert.alert(
+                        'Unlink Trainer',
+                        'Are you sure you want to unlink from your trainer?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Unlink',
+                            style: 'destructive',
+                            onPress: async () => {
+                              await unlinkTrainer();
+                              Alert.alert('Unlinked', 'Trainer unlinked successfully.');
+                            },
+                          },
+                        ]
+                      );
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-outline" size={16} color={theme.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.linkedTrainerChip,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.linkedTrainerChipLabel, { color: theme.textMuted }]}>
+                    NO TRAINER LINKED
+                  </Text>
+                  <Text style={[styles.linkedTrainerChipName, { color: theme.textSecondary, fontSize: 12 }]}>
+                    Enter a trainer code to link with your coach
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.linkTrainerBtn,
+                    {
+                      backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                    },
+                  ]}
+                  onPress={() => setLinkTrainerModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.linkTrainerBtnText, { color: theme.isDark ? '#0A1A12' : '#FFFFFF' }]}>
+                    Link
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
 
@@ -524,7 +620,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>HEIGHT</Text>
               </View>
               <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                {profile?.heightCm || 185} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                {formatHeight(profile?.heightCm || 185, unitSystem)}
               </Text>
             </View>
 
@@ -540,7 +636,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>WEIGHT</Text>
               </View>
               <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                {weightHistory[0]?.weightKg || 92} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                {formatWeight(weightHistory[0]?.weightKg || profile?.weightKg || 70, unitSystem)}
               </Text>
             </View>
 
@@ -557,7 +653,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>NECK</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements.neckCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements.neckCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -575,7 +671,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>CHEST</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements.chestCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements.chestCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -593,7 +689,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>WAIST</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements.waistCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements.waistCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -611,7 +707,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>HIPS</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements.hipsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements.hipsCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -629,7 +725,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>BICEPS (L)</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements?.bicepsLCm || latestMeasurements?.bicepsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements?.bicepsLCm || latestMeasurements?.bicepsCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -647,7 +743,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>BICEPS (R)</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements?.bicepsRCm || latestMeasurements?.bicepsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements?.bicepsRCm || latestMeasurements?.bicepsCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -665,7 +761,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>THIGHS (L)</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements?.thighsLCm || latestMeasurements?.thighsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements?.thighsLCm || latestMeasurements?.thighsCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -683,7 +779,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>THIGHS (R)</Text>
                 </View>
                 <Text style={[styles.measureTileVal, { color: theme.text }]}>
-                  {latestMeasurements?.thighsRCm || latestMeasurements?.thighsCm} <Text style={[styles.measureTileUnit, { color: theme.textMuted }]}>cm</Text>
+                  {formatLength(latestMeasurements?.thighsRCm || latestMeasurements?.thighsCm, unitSystem)}
                 </Text>
               </View>
             ) : null}
@@ -716,9 +812,9 @@ export default function ProfileScreen() {
               </View>
               <Text style={[styles.prKpiLabel, { color: theme.textSecondary }]}>BENCH PRESS</Text>
               <Text style={[styles.prKpiValue, { color: theme.accentGold }]}>
-                {personalRecords['ex_01']?.oneRmKg ? `${personalRecords['ex_01'].oneRmKg}` : '100'}
+                {formatWeight(personalRecords['ex_01']?.oneRmKg, unitSystem)}
               </Text>
-              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>kg · 1RM</Text>
+              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>1RM Max</Text>
             </View>
 
             {/* Squat */}
@@ -733,9 +829,9 @@ export default function ProfileScreen() {
               </View>
               <Text style={[styles.prKpiLabel, { color: theme.textSecondary }]}>SQUAT</Text>
               <Text style={[styles.prKpiValue, { color: theme.accentGold }]}>
-                {personalRecords['ex_07']?.oneRmKg ? `${personalRecords['ex_07'].oneRmKg}` : '140'}
+                {formatWeight(personalRecords['ex_07']?.oneRmKg, unitSystem)}
               </Text>
-              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>kg · 1RM</Text>
+              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>1RM Max</Text>
             </View>
 
             {/* Deadlift */}
@@ -750,9 +846,9 @@ export default function ProfileScreen() {
               </View>
               <Text style={[styles.prKpiLabel, { color: theme.textSecondary }]}>DEADLIFT</Text>
               <Text style={[styles.prKpiValue, { color: theme.accentGold }]}>
-                {personalRecords['ex_08']?.oneRmKg ? `${personalRecords['ex_08'].oneRmKg}` : '180'}
+                {formatWeight(personalRecords['ex_08']?.oneRmKg, unitSystem)}
               </Text>
-              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>kg · 1RM</Text>
+              <Text style={[styles.prKpiUnit, { color: theme.textMuted }]}>1RM Max</Text>
             </View>
           </View>
         </View>
@@ -799,6 +895,20 @@ export default function ProfileScreen() {
                   const formattedDate = new Date(log.date)
                     .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                     .toUpperCase();
+
+                  const logWeight = log.weightKg || profile?.weightKg || 70;
+                  const logHeight = log.heightCm || profile?.heightCm || 175;
+                  const logStats = {
+                    heightCm: logHeight,
+                    weightKg: logWeight,
+                    sex: profile?.sex || 'MALE',
+                    ageYears: 26,
+                    neckCm: log.measurements?.neckCm || latestMeasurements?.neckCm || profile?.bodyMeasurements?.neckCm,
+                    waistCm: log.measurements?.waistCm || latestMeasurements?.waistCm || profile?.bodyMeasurements?.waistCm,
+                    hipsCm: log.measurements?.hipsCm || latestMeasurements?.hipsCm || profile?.bodyMeasurements?.hipsCm,
+                    activityLevel: profile?.activityLevel || 'MODERATELY_ACTIVE',
+                  };
+                  const metrics = getCalculatedMetrics(logStats);
 
                   // Extract all fields updated in this specific check-in
                   const updatedFields: { label: string; value: string }[] = [];
@@ -911,7 +1021,10 @@ export default function ProfileScreen() {
                           {/* [Image (if any)] in Center */}
                           {log.photoUrl && (
                             <TouchableOpacity
-                              onPress={() => setViewingPhoto({ id: log.id, date: log.date, photoUrl: log.photoUrl!, note: log.note })}
+                              onPress={() => {
+                                setViewingPhoto({ id: log.id, date: log.date, photoUrls: log.photoUrls?.length ? log.photoUrls : [log.photoUrl!], note: log.note });
+                                setViewingPhotoIndex(0);
+                              }}
                               activeOpacity={0.8}
                               style={{ marginHorizontal: 8 }}
                             >
@@ -958,7 +1071,7 @@ export default function ProfileScreen() {
                             <View style={[styles.calcMetricsBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
                               <View style={styles.calcMetricCol}>
                                 <Text style={[styles.calcMetricVal, { color: theme.text }]}>
-                                  {((log.weightKg || 76.4) / Math.pow((log.heightCm || 175) / 100, 2)).toFixed(1)}
+                                  {metrics.bmi.toFixed(1)}
                                 </Text>
                                 <Text style={[styles.calcMetricLabel, { color: theme.textMuted }]}>BMI Index</Text>
                               </View>
@@ -966,14 +1079,18 @@ export default function ProfileScreen() {
                               <View style={[styles.calcMetricDivider, { backgroundColor: theme.border }]} />
 
                               <View style={styles.calcMetricCol}>
-                                <Text style={[styles.calcMetricVal, { color: theme.text }]}>16.4%</Text>
+                                <Text style={[styles.calcMetricVal, { color: theme.text }]}>
+                                  {metrics.estimatedBodyFatPct ? `${metrics.estimatedBodyFatPct.toFixed(1)}%` : '15.0%'}
+                                </Text>
                                 <Text style={[styles.calcMetricLabel, { color: theme.textMuted }]}>Est. Body Fat</Text>
                               </View>
 
                               <View style={[styles.calcMetricDivider, { backgroundColor: theme.border }]} />
 
                               <View style={styles.calcMetricCol}>
-                                <Text style={[styles.calcMetricVal, { color: theme.text }]}>1,845 kcal</Text>
+                                <Text style={[styles.calcMetricVal, { color: theme.text }]}>
+                                  {Math.round(metrics.bmrKcal).toLocaleString()} kcal
+                                </Text>
                                 <Text style={[styles.calcMetricLabel, { color: theme.textMuted }]}>Daily BMR</Text>
                               </View>
                             </View>
@@ -984,7 +1101,10 @@ export default function ProfileScreen() {
                                   styles.viewFullPhotoBtn,
                                   { backgroundColor: theme.isDark ? theme.accentGold : theme.primary },
                                 ]}
-                                onPress={() => setViewingPhoto({ id: log.id, date: log.date, photoUrl: log.photoUrl!, note: log.note })}
+                                onPress={() => {
+                                  setViewingPhoto({ id: log.id, date: log.date, photoUrls: log.photoUrls?.length ? log.photoUrls : [log.photoUrl!], note: log.note });
+                                  setViewingPhotoIndex(0);
+                                }}
                                 activeOpacity={0.8}
                               >
                                 <Ionicons name="expand-outline" size={14} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
@@ -1258,7 +1378,7 @@ export default function ProfileScreen() {
                       borderColor: theme.isDark ? theme.accentGold : theme.primary,
                     },
                   ]}
-                  onPress={handleAddSamplePhoto}
+                  onPress={handlePickPhotos}
                 >
                   <Text
                     style={[
@@ -1292,7 +1412,7 @@ export default function ProfileScreen() {
                         borderColor: theme.isDark ? theme.accentGold : theme.primary,
                       },
                     ]}
-                    onPress={handleAddSamplePhoto}
+                    onPress={handlePickPhotos}
                   >
                     <Ionicons name="camera-outline" size={20} color={theme.isDark ? theme.accentGold : theme.primary} />
                     <Text
@@ -1456,10 +1576,37 @@ export default function ProfileScreen() {
             {viewingPhoto && (
               <View style={styles.expandedPhotoContainer}>
                 <Image
-                  source={{ uri: viewingPhoto.photoUrl }}
+                  source={{ uri: viewingPhoto.photoUrls[viewingPhotoIndex] }}
                   style={styles.expandedPhotoImg}
                   resizeMode="cover"
                 />
+                
+                {viewingPhoto.photoUrls.length > 1 && (
+                  <View style={{ position: 'absolute', flexDirection: 'row', width: '100%', justifyContent: 'space-between', top: '50%', marginTop: -15, paddingHorizontal: 10 }}>
+                    <TouchableOpacity 
+                      style={{ backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 15, width: 30, height: 30, alignItems: 'center', justifyContent: 'center', opacity: viewingPhotoIndex === 0 ? 0 : 1 }}
+                      onPress={() => setViewingPhotoIndex(prev => Math.max(0, prev - 1))}
+                      disabled={viewingPhotoIndex === 0}
+                    >
+                      <Ionicons name="chevron-back" size={20} color="#FFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={{ backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 15, width: 30, height: 30, alignItems: 'center', justifyContent: 'center', opacity: viewingPhotoIndex === viewingPhoto.photoUrls.length - 1 ? 0 : 1 }}
+                      onPress={() => setViewingPhotoIndex(prev => Math.min(viewingPhoto.photoUrls.length - 1, prev + 1))}
+                      disabled={viewingPhotoIndex === viewingPhoto.photoUrls.length - 1}
+                    >
+                      <Ionicons name="chevron-forward" size={20} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {/* Dots indicator */}
+                {viewingPhoto.photoUrls.length > 1 && (
+                  <View style={{ position: 'absolute', bottom: 10, flexDirection: 'row', width: '100%', justifyContent: 'center', gap: 6 }}>
+                    {viewingPhoto.photoUrls.map((_, i) => (
+                      <View key={i} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: i === viewingPhotoIndex ? (theme.isDark ? theme.accentGold : theme.primary) : 'rgba(255,255,255,0.5)' }} />
+                    ))}
+                  </View>
+                )}
               </View>
             )}
 
@@ -1478,24 +1625,36 @@ export default function ProfileScreen() {
                 style={[styles.modalDeleteBtn, { backgroundColor: theme.danger }]}
                 onPress={() => {
                   if (!viewingPhoto) return;
-                  Alert.alert(
-                    'Delete Check-In Photo',
-                    'Are you sure you want to remove this photo from your check-in journal?',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: () => {
-                          deleteCheckinPhoto(viewingPhoto.id);
-                          deleteCheckinLog(viewingPhoto.id);
-                          useTrainerStore.getState().deleteLiveFeedEventByPhotoUrl(viewingPhoto.photoUrl);
-                          useTrainerStore.getState().removePhotoFromLiveFeed(viewingPhoto.photoUrl);
-                          setViewingPhoto(null);
+
+                  const performDelete = () => {
+                    const photoUrlToDelete = viewingPhoto.photoUrls[viewingPhotoIndex];
+                    if (photoUrlToDelete) {
+                      deleteCheckinPhoto(photoUrlToDelete);
+                      useTrainerStore.getState().deleteLiveFeedEventByPhotoUrl(photoUrlToDelete);
+                      useTrainerStore.getState().removePhotoFromLiveFeed(photoUrlToDelete);
+                    }
+                    setViewingPhoto(null);
+                  };
+
+                  if (Platform.OS === 'web') {
+                    const confirmDelete = window.confirm('Are you sure you want to remove this photo from your check-in journal?');
+                    if (confirmDelete) {
+                      performDelete();
+                    }
+                  } else {
+                    Alert.alert(
+                      'Delete Check-In Photo',
+                      'Are you sure you want to remove this photo from your check-in journal?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: performDelete,
                         },
-                      },
-                    ]
-                  );
+                      ]
+                    );
+                  }
                 }}
                 activeOpacity={0.8}
               >
@@ -1505,6 +1664,61 @@ export default function ProfileScreen() {
                 </View>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* LINK TRAINER MODAL */}
+      <Modal
+        visible={linkTrainerModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setLinkTrainerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.linkModalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.linkModalHeader}>
+              <Text style={[styles.linkModalTitle, { color: theme.text }]}>Link with Trainer</Text>
+              <TouchableOpacity onPress={() => setLinkTrainerModalVisible(false)}>
+                <Ionicons name="close-outline" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.linkModalSub, { color: theme.textSecondary }]}>
+              Enter the unique trainer code provided by your coach (e.g. TRN-882).
+            </Text>
+
+            <TextInput
+              style={[
+                styles.linkModalInput,
+                {
+                  color: theme.text,
+                  backgroundColor: theme.cardInner,
+                  borderColor: theme.border,
+                },
+              ]}
+              placeholder="TRN-XXXX"
+              placeholderTextColor={theme.textMuted}
+              value={trainerCodeInput}
+              onChangeText={setTrainerCodeInput}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.linkSubmitBtn,
+                {
+                  backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                },
+              ]}
+              onPress={handleLinkTrainer}
+              disabled={isLinking}
+            >
+              <Text style={[styles.linkSubmitBtnText, { color: theme.isDark ? '#0A1A12' : '#FFFFFF' }]}>
+                {isLinking ? 'Linking...' : 'Connect Coach'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -2185,6 +2399,60 @@ const styles = StyleSheet.create({
   },
   modalSaveText: {
     fontSize: 13,
+    fontWeight: 'bold',
+  },
+
+  /* Link Trainer Styles */
+  linkTrainerBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkTrainerBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  linkModalContent: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+  },
+  linkModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  linkModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  linkModalSub: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  linkModalInput: {
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  linkSubmitBtn: {
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  linkSubmitBtnText: {
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });

@@ -6,41 +6,74 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Image,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
+import { getLengthUnitLabel } from '../../lib/units';
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { completeOnboarding, generateTrainerCode, linkTrainer } = useAuthStore();
+  const { profile, completeOnboarding, generateTrainerCode, linkTrainer } = useAuthStore();
+  const unitSystem = useAuthStore((state) => state.unitSystem);
 
   const [step, setStep] = useState(0);
 
   // Form State
   const [role, setRole] = useState<'CLIENT' | 'TRAINER'>('CLIENT');
-  const [fullName, setFullName] = useState('Ankit Sharma');
+  const [fullName, setFullName] = useState(profile?.fullName || '');
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(profile?.avatarUrl);
   const [sex, setSex] = useState<'MALE' | 'FEMALE' | 'OTHER'>('MALE');
-  const [heightCm, setHeightCm] = useState('175');
-  const [weightKg, setWeightKg] = useState('75');
+  const [heightCm, setHeightCm] = useState('');
+  const [weightKg, setWeightKg] = useState('');
   const [activityLevel, setActivityLevel] = useState<'SEDENTARY' | 'LIGHTLY_ACTIVE' | 'MODERATELY_ACTIVE' | 'VERY_ACTIVE' | 'EXTRA_ACTIVE'>('MODERATELY_ACTIVE');
 
-  // Step 2 Measurements
-  const [neckCm, setNeckCm] = useState('39');
-  const [waistCm, setWaistCm] = useState('84');
-  const [hipsCm, setHipsCm] = useState('98');
+  const avatarPresets = [
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200',
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200',
+    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
+  ];
 
-  // Step 3 Goals
-  const [selectedGoals, setSelectedGoals] = useState<string[]>(['FAT_LOSS', 'MUSCLE_GAIN']);
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setAvatarUrl(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.warn('ImagePicker error:', e);
+    }
+  };
 
-  // Step 4 Nutrition Targets
-  const [calories, setCalories] = useState('2200');
-  const [protein, setProtein] = useState('150');
-  const [carbs, setCarbs] = useState('220');
-  const [fat, setFat] = useState('70');
+  // Step 2 Measurements (Upper & Lower Body - All optional, no pre-populated mock values)
+  const [neckCm, setNeckCm] = useState('');
+  const [chestCm, setChestCm] = useState('');
+  const [waistCm, setWaistCm] = useState('');
+  const [bicepsLCm, setBicepsLCm] = useState('');
+  const [bicepsRCm, setBicepsRCm] = useState('');
+  const [hipsCm, setHipsCm] = useState('');
+  const [thighsLCm, setThighsLCm] = useState('');
+  const [thighsRCm, setThighsRCm] = useState('');
+
+  // Step 3 Goals (At least 1 option required)
+  const [selectedGoals, setSelectedGoals] = useState<string[]>(['FAT_LOSS']);
+
+  // Step 4 Nutrition Targets (Optional, default targets: 2500 kcal, 75g P, 250g C, 65g F)
+  const [calories, setCalories] = useState('2500');
+  const [protein, setProtein] = useState('75');
+  const [carbs, setCarbs] = useState('250');
+  const [fat, setFat] = useState('65');
 
   // Step 5 Trainer Code
   const [trainerCodeInput, setTrainerCodeInput] = useState('');
@@ -59,8 +92,32 @@ export default function OnboardingScreen() {
         generateTrainerCode();
       }
       setStep(1);
-    } else if (step < 5) {
-      setStep(step + 1);
+    } else if (step === 1) {
+      // Step 1 Core Information Validation: All fields are required
+      if (!fullName.trim() || !heightCm.trim() || !weightKg.trim() || !sex || !activityLevel) {
+        Alert.alert('Required Fields', 'Please complete all Core Information fields (Full Name, Height, Weight, Biological Sex, and Activity Level) before proceeding.');
+        return;
+      }
+      const parsedH = parseFloat(heightCm);
+      const parsedW = parseFloat(weightKg);
+      if (isNaN(parsedH) || parsedH <= 0 || isNaN(parsedW) || parsedW <= 0) {
+        Alert.alert('Invalid Input', 'Please enter valid numerical values for Height and Weight.');
+        return;
+      }
+      setStep(2);
+    } else if (step === 2) {
+      // Step 2 Body Measurements: All fields optional
+      setStep(3);
+    } else if (step === 3) {
+      // Step 3 Fitness Goals Validation: At least 1 option must be selected
+      if (selectedGoals.length === 0) {
+        Alert.alert('Selection Required', 'Please select at least 1 fitness goal to continue.');
+        return;
+      }
+      setStep(4);
+    } else if (step === 4) {
+      // Step 4 Nutrition Targets: Optional with default targets
+      setStep(5);
     } else {
       // Final Step Complete
       if (trainerCodeInput.trim()) {
@@ -68,7 +125,8 @@ export default function OnboardingScreen() {
       }
 
       await completeOnboarding({
-        fullName,
+        fullName: fullName.trim(),
+        avatarUrl,
         role,
         sex,
         heightCm: parseFloat(heightCm) || 175,
@@ -76,15 +134,20 @@ export default function OnboardingScreen() {
         activityLevel,
         goals: selectedGoals,
         macroTargets: {
-          calories: parseInt(calories) || 2200,
-          protein: parseInt(protein) || 150,
-          carbs: parseInt(carbs) || 220,
-          fat: parseInt(fat) || 70,
+          calories: parseInt(calories) || 2500,
+          protein: parseInt(protein) || 75,
+          carbs: parseInt(carbs) || 250,
+          fat: parseInt(fat) || 65,
         },
         bodyMeasurements: {
-          neckCm: parseFloat(neckCm) || 39,
-          waistCm: parseFloat(waistCm) || 84,
-          hipsCm: parseFloat(hipsCm) || 98,
+          neckCm: parseFloat(neckCm) || undefined,
+          chestCm: parseFloat(chestCm) || undefined,
+          waistCm: parseFloat(waistCm) || undefined,
+          bicepsLCm: parseFloat(bicepsLCm) || undefined,
+          bicepsRCm: parseFloat(bicepsRCm) || undefined,
+          hipsCm: parseFloat(hipsCm) || undefined,
+          thighsLCm: parseFloat(thighsLCm) || undefined,
+          thighsRCm: parseFloat(thighsRCm) || undefined,
         },
       });
 
@@ -183,7 +246,7 @@ export default function OnboardingScreen() {
           </View>
         )}
 
-        {/* Step 1: Core Info */}
+        {/* Step 1: Core Info & Profile Picture */}
         {step === 1 && (
           <View
             style={[
@@ -198,7 +261,84 @@ export default function OnboardingScreen() {
             <Text style={[styles.title, { color: theme.text }]}>Core Information</Text>
             <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Tell us about your physical profile.</Text>
 
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Full Name</Text>
+            {/* Profile Picture Option */}
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Profile Picture (Optional)</Text>
+            <View
+              style={[
+                styles.avatarPickerRow,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.avatarPreviewBox,
+                  { borderColor: theme.isDark ? theme.accentGold : theme.primary },
+                ]}
+                onPress={pickImage}
+              >
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarPreviewImg} />
+                ) : (
+                  <View
+                    style={[
+                      styles.avatarPlaceholder,
+                      { backgroundColor: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    {fullName ? (
+                      <Text
+                        style={[
+                          styles.avatarPlaceholderText,
+                          { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                        ]}
+                      >
+                        {fullName.charAt(0).toUpperCase()}
+                      </Text>
+                    ) : (
+                      <Ionicons
+                        name="camera-outline"
+                        size={18}
+                        color={theme.isDark ? '#0A1A12' : '#FFFFFF'}
+                      />
+                    )}
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <View style={{ flex: 1 }}>
+                <View style={styles.presetRow}>
+                  {avatarPresets.map((uri, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[
+                        styles.presetCircle,
+                        avatarUrl === uri && {
+                          borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                        },
+                      ]}
+                      onPress={() => setAvatarUrl(uri)}
+                    >
+                      <Image source={{ uri }} style={styles.presetImg} />
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[
+                      styles.presetCircle,
+                      {
+                        backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      },
+                    ]}
+                    onPress={pickImage}
+                  >
+                    <Ionicons name="camera-outline" size={16} color={theme.isDark ? '#0A1A12' : '#FFFFFF'} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Full Name *</Text>
             <TextInput
               style={[
                 styles.input,
@@ -210,9 +350,11 @@ export default function OnboardingScreen() {
               ]}
               value={fullName}
               onChangeText={setFullName}
+              placeholder="Enter your full name"
+              placeholderTextColor={theme.textMuted}
             />
 
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Biological Sex</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Biological Sex *</Text>
             <View style={styles.chipRow}>
               {(['MALE', 'FEMALE', 'OTHER'] as const).map((s) => (
                 <TouchableOpacity
@@ -253,7 +395,7 @@ export default function OnboardingScreen() {
               ))}
             </View>
 
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Height (cm)</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Height (cm) *</Text>
             <TextInput
               style={[
                 styles.input,
@@ -265,10 +407,12 @@ export default function OnboardingScreen() {
               ]}
               value={heightCm}
               onChangeText={setHeightCm}
+              placeholder="e.g. 175"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
 
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Current Weight (kg)</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Current Weight (kg) *</Text>
             <TextInput
               style={[
                 styles.input,
@@ -280,6 +424,8 @@ export default function OnboardingScreen() {
               ]}
               value={weightKg}
               onChangeText={setWeightKg}
+              placeholder="e.g. 75"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
 
@@ -344,9 +490,21 @@ export default function OnboardingScreen() {
             ]}
           >
             <Text style={[styles.title, { color: theme.text }]}>Body Measurements (Optional)</Text>
-            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Used for calculating Navy Body Fat %.</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Enter upper & lower body metrics for Navy Body Fat % & progress tracking.
+            </Text>
 
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Neck Circumference (cm)</Text>
+            {/* UPPER BODY SECTION */}
+            <View style={[styles.bodyGroupHeaderRow, { borderBottomColor: theme.border }]}>
+              <Ionicons name="body-outline" size={16} color={theme.isDark ? theme.accentGold : theme.primary} />
+              <Text style={[styles.bodyGroupTitle, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                UPPER BODY MEASUREMENTS
+              </Text>
+            </View>
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+              Neck Circumference ({getLengthUnitLabel(unitSystem)})
+            </Text>
             <TextInput
               style={[
                 styles.input,
@@ -358,10 +516,33 @@ export default function OnboardingScreen() {
               ]}
               value={neckCm}
               onChangeText={setNeckCm}
+              placeholder="39"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
 
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Waist Circumference (cm)</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+              Chest Circumference ({getLengthUnitLabel(unitSystem)})
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={chestCm}
+              onChangeText={setChestCm}
+              placeholder="102"
+              placeholderTextColor={theme.textMuted}
+              keyboardType="numeric"
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+              Waist Circumference ({getLengthUnitLabel(unitSystem)})
+            </Text>
             <TextInput
               style={[
                 styles.input,
@@ -373,10 +554,67 @@ export default function OnboardingScreen() {
               ]}
               value={waistCm}
               onChangeText={setWaistCm}
+              placeholder="84"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
 
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Hips Circumference (cm)</Text>
+            {/* Bicep (L) & Bicep (R) Row */}
+            <View style={styles.twoColumnRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                  Bicep (L) ({getLengthUnitLabel(unitSystem)})
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
+                  value={bicepsLCm}
+                  onChangeText={setBicepsLCm}
+                  placeholder="37"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                  Bicep (R) ({getLengthUnitLabel(unitSystem)})
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
+                  value={bicepsRCm}
+                  onChangeText={setBicepsRCm}
+                  placeholder="37.5"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            {/* LOWER BODY SECTION */}
+            <View style={[styles.bodyGroupHeaderRow, { borderBottomColor: theme.border, marginTop: 18 }]}>
+              <Ionicons name="walk-outline" size={16} color={theme.isDark ? theme.accentGold : theme.primary} />
+              <Text style={[styles.bodyGroupTitle, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                LOWER BODY MEASUREMENTS
+              </Text>
+            </View>
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+              Hips Circumference ({getLengthUnitLabel(unitSystem)})
+            </Text>
             <TextInput
               style={[
                 styles.input,
@@ -388,8 +626,55 @@ export default function OnboardingScreen() {
               ]}
               value={hipsCm}
               onChangeText={setHipsCm}
+              placeholder="98"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
+
+            {/* Thigh (L) & Thigh (R) Row */}
+            <View style={styles.twoColumnRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                  Thigh (L) ({getLengthUnitLabel(unitSystem)})
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
+                  value={thighsLCm}
+                  onChangeText={setThighsLCm}
+                  placeholder="58"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                  Thigh (R) ({getLengthUnitLabel(unitSystem)})
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.inputBg,
+                      borderColor: theme.inputBorder,
+                      color: theme.text,
+                    },
+                  ]}
+                  value={thighsRCm}
+                  onChangeText={setThighsRCm}
+                  placeholder="58.5"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
           </View>
         )}
 
@@ -452,8 +737,10 @@ export default function OnboardingScreen() {
               },
             ]}
           >
-            <Text style={[styles.title, { color: theme.text }]}>Daily Nutrition Targets</Text>
-            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Set your daily calorie & macro goals.</Text>
+            <Text style={[styles.title, { color: theme.text }]}>Daily Nutrition Targets (Optional)</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Customize your daily targets or use the recommended default values below.
+            </Text>
 
             <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Calorie Target (kcal)</Text>
             <TextInput
@@ -467,6 +754,8 @@ export default function OnboardingScreen() {
               ]}
               value={calories}
               onChangeText={setCalories}
+              placeholder="2500"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
 
@@ -482,6 +771,8 @@ export default function OnboardingScreen() {
               ]}
               value={protein}
               onChangeText={setProtein}
+              placeholder="75"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
 
@@ -497,6 +788,8 @@ export default function OnboardingScreen() {
               ]}
               value={carbs}
               onChangeText={setCarbs}
+              placeholder="250"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
 
@@ -512,6 +805,8 @@ export default function OnboardingScreen() {
               ]}
               value={fat}
               onChangeText={setFat}
+              placeholder="65"
+              placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
             />
           </View>
@@ -674,6 +969,70 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     letterSpacing: 3,
+  },
+  bodyGroupHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    paddingBottom: 8,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  bodyGroupTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  twoColumnRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  avatarPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  avatarPreviewBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
+    borderWidth: 2,
+  },
+  avatarPreviewImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPlaceholderText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  presetRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  presetCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  presetImg: {
+    width: '100%',
+    height: '100%',
   },
   roleOption: {
     flexDirection: 'row',

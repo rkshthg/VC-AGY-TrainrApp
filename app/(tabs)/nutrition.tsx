@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,10 +45,17 @@ export default function NutritionScreen() {
   const [fatInput, setFatInput] = useState('15');
 
   const handleDelete = (id: string, name: string) => {
-    Alert.alert('Delete Meal Log', `Are you sure you want to remove ${name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteMealEntry(id) },
-    ]);
+    if (Platform.OS === 'web') {
+      const confirmDelete = window.confirm(`Are you sure you want to remove ${name}?`);
+      if (confirmDelete) {
+        deleteMealEntry(id);
+      }
+    } else {
+      Alert.alert('Delete Meal Log', `Are you sure you want to remove ${name}?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteMealEntry(id) },
+      ]);
+    }
   };
 
   const handleOpenQuickAdd = (category: 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACKS') => {
@@ -107,104 +115,15 @@ export default function NutritionScreen() {
     { type: 'SNACKS', title: 'Snacks', iconName: 'nutrition-outline' },
   ];
 
-  const samplePastSevenDaysHistory = [
-    {
-      dateLabel: 'Yesterday (Mon, Aug 10)',
-      totalCalories: 2050,
-      targetCalories: 2100,
-      proteinG: 175,
-      carbsG: 240,
-      fatG: 68,
-      meals: [
-        { name: 'Oatmeal, Whole Eggs & Berries', category: 'Breakfast', kcal: 520 },
-        { name: 'Chicken Tikka Bowl w/ Rice', category: 'Lunch', kcal: 680 },
-        { name: 'Greek Yogurt & Almonds', category: 'Snacks', kcal: 200 },
-        { name: 'Pan-seared Salmon & Asparagus', category: 'Dinner', kcal: 650 },
-      ],
-    },
-    {
-      dateLabel: 'Sun, Aug 9',
-      totalCalories: 2180,
-      targetCalories: 2100,
-      proteinG: 182,
-      carbsG: 260,
-      fatG: 72,
-      meals: [
-        { name: 'Protein Pancakes & Bananas', category: 'Breakfast', kcal: 580 },
-        { name: 'Turkey Sub Sandwich & Baked Chips', category: 'Lunch', kcal: 720 },
-        { name: 'Apple & Whey Protein Shake', category: 'Snacks', kcal: 230 },
-        { name: 'Lean Beef Stir-Fry w/ Noodles', category: 'Dinner', kcal: 650 },
-      ],
-    },
-    {
-      dateLabel: 'Sat, Aug 8',
-      totalCalories: 1950,
-      targetCalories: 2100,
-      proteinG: 165,
-      carbsG: 220,
-      fatG: 62,
-      meals: [
-        { name: 'Scrambled Eggs & Avocado Toast', category: 'Breakfast', kcal: 490 },
-        { name: 'Grilled Chicken Caesar Salad', category: 'Lunch', kcal: 610 },
-        { name: 'Tofu & Vegetable Curry w/ Basmati Rice', category: 'Dinner', kcal: 850 },
-      ],
-    },
-    {
-      dateLabel: 'Fri, Aug 7',
-      totalCalories: 2080,
-      targetCalories: 2100,
-      proteinG: 178,
-      carbsG: 245,
-      fatG: 66,
-      meals: [
-        { name: 'Overnight Oats w/ Chia Seeds', category: 'Breakfast', kcal: 480 },
-        { name: 'Egg Bhurji & Whole Wheat Roti', category: 'Lunch', kcal: 620 },
-        { name: 'Peanut Butter Toast & Protein Shake', category: 'Snacks', kcal: 320 },
-        { name: 'Grilled Shrimp & Quinoa Salad', category: 'Dinner', kcal: 660 },
-      ],
-    },
-    {
-      dateLabel: 'Thu, Aug 6',
-      totalCalories: 2010,
-      targetCalories: 2100,
-      proteinG: 172,
-      carbsG: 235,
-      fatG: 65,
-      meals: [
-        { name: 'Greek Yogurt, Honey & Granola', category: 'Breakfast', kcal: 450 },
-        { name: 'Dal Tadka, Rice & Grilled Chicken', category: 'Lunch', kcal: 710 },
-        { name: 'Mixed Nuts & Green Tea', category: 'Snacks', kcal: 180 },
-        { name: 'Chicken Wrap & Roasted Potatoes', category: 'Dinner', kcal: 670 },
-      ],
-    },
-    {
-      dateLabel: 'Wed, Aug 5',
-      totalCalories: 1990,
-      targetCalories: 2100,
-      proteinG: 170,
-      carbsG: 230,
-      fatG: 64,
-      meals: [
-        { name: '3 Egg White Omelette & Toast', category: 'Breakfast', kcal: 420 },
-        { name: 'Paneer Burrito Bowl', category: 'Lunch', kcal: 780 },
-        { name: 'Grilled Cod & Steamed Vegetables', category: 'Dinner', kcal: 790 },
-      ],
-    },
-    {
-      dateLabel: 'Tue, Aug 4',
-      totalCalories: 2120,
-      targetCalories: 2100,
-      proteinG: 180,
-      carbsG: 250,
-      fatG: 70,
-      meals: [
-        { name: 'Protein Smoothie & Rice Cakes', category: 'Breakfast', kcal: 500 },
-        { name: 'Chicken Breast & Sweet Potato Fries', category: 'Lunch', kcal: 750 },
-        { name: 'Dark Chocolate & Almonds', category: 'Snacks', kcal: 210 },
-        { name: 'Egg Curry & Jeera Rice', category: 'Dinner', kcal: 660 },
-      ],
-    },
-  ];
+  const samplePastSevenDaysHistory: Array<{
+    dateLabel: string;
+    totalCalories: number;
+    targetCalories: number;
+    proteinG: number;
+    carbsG: number;
+    fatG: number;
+    meals: Array<{ name: string; category: string; kcal: number }>;
+  }> = [];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>

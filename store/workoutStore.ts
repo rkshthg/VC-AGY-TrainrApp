@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import exerciseData from '../assets/data/exercises.json';
 import { calculate1RM } from '../lib/healthMetrics';
+import { supabase } from '../lib/supabase';
+import { queueOfflineTransaction } from '../lib/offlineSync';
+import { useAuthStore } from './authStore';
 
 export interface ExerciseDef {
   id: string;
@@ -84,7 +87,9 @@ interface WorkoutState {
   activeSession: ActiveWorkoutSession | null;
   workoutHistory: CompletedWorkoutHeader[];
   personalRecords: Record<string, { weightKg: number; reps: number; oneRmKg: number; date: string }>;
+  isLoading: boolean;
 
+  fetchWorkoutData: (userId: string) => Promise<void>;
   createPlan: (plan: Omit<WorkoutPlan, 'id'>, assignedClientIds?: string[]) => void;
   updatePlan: (planId: string, updates: Partial<WorkoutPlan>) => void;
   deletePlan: (planId: string) => void;
@@ -103,35 +108,9 @@ interface WorkoutState {
 
 export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   exerciseCatalog: exerciseData as ExerciseDef[],
-  savedPlans: [
-    {
-      id: 'plan_1',
-      title: 'Hypertrophy Push/Pull/Legs',
-      createdBy: 'usr_1',
-      days: [
-        {
-          id: 'day_push',
-          dayName: 'Day 1: Push (Chest / Shoulders / Triceps)',
-          exercises: [
-            { exerciseId: 'ex_01', name: 'Barbell Bench Press', targetSets: 4, targetReps: '8-10', targetWeightKg: 75 },
-            { exerciseId: 'ex_28', name: 'Seated Dumbbell Shoulder Press', targetSets: 3, targetReps: '10-12', targetWeightKg: 20 },
-            { exerciseId: 'ex_38', name: 'Tricep Rope Pushdown', targetSets: 3, targetReps: '12-15', targetWeightKg: 25 },
-          ],
-        },
-        {
-          id: 'day_pull',
-          dayName: 'Day 2: Pull (Back / Biceps)',
-          exercises: [
-            { exerciseId: 'ex_20', name: 'Lat Pulldown (Wide Grip)', targetSets: 4, targetReps: '10-12', targetWeightKg: 55 },
-            { exerciseId: 'ex_22', name: 'Single-Arm Dumbbell Row', targetSets: 3, targetReps: '8-10', targetWeightKg: 24 },
-            { exerciseId: 'ex_33', name: 'Barbell Bicep Curl', targetSets: 3, targetReps: '10-12', targetWeightKg: 30 },
-          ],
-        },
-      ],
-    },
-  ],
-  activePlanId: 'plan_1',
-  activeRoutineDayIndexMap: { plan_1: 0 },
+  savedPlans: [],
+  activePlanId: null,
+  activeRoutineDayIndexMap: {},
   setActivePlan: (planId: string) => set({ activePlanId: planId }),
   setActiveRoutineDayIndex: (planId: string, dayIndex: number) =>
     set((state) => ({
@@ -141,19 +120,45 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       },
     })),
   activeSession: null,
-  workoutHistory: [
-    {
-      id: 'history_1',
-      title: 'Hypertrophy Push',
-      date: new Date(Date.now() - 86400000).toISOString(),
-      durationMinutes: 48,
-      totalVolumeKg: 4250,
-      exerciseCount: 4,
-    },
-  ],
-  personalRecords: {
-    ex_01: { weightKg: 85, reps: 5, oneRmKg: 99.2, date: new Date().toISOString() },
-    ex_07: { weightKg: 110, reps: 5, oneRmKg: 128.3, date: new Date().toISOString() },
+  workoutHistory: [],
+  personalRecords: {},
+  isLoading: false,
+
+  fetchWorkoutData: async (userId: string) => {
+    set({ isLoading: true });
+    try {
+      const [logsRes, prsRes] = await Promise.all([
+        supabase.from('workout_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+        supabase.from('personal_records').select('*').eq('user_id', userId)
+      ]);
+
+      const workoutHistory: CompletedWorkoutHeader[] = (logsRes.data || []).map(log => ({
+        id: log.id,
+        title: log.title,
+        date: log.created_at,
+        durationMinutes: log.duration_minutes,
+        totalVolumeKg: log.total_volume_kg,
+        exerciseCount: log.exercise_count,
+        // Since we don't fetch all sets yet, we just leave exerciseLogs empty for historic loads right now, 
+        // or we could fetch them if needed.
+        exerciseLogs: []
+      }));
+
+      const personalRecords: Record<string, any> = {};
+      (prsRes.data || []).forEach(pr => {
+        personalRecords[pr.exercise_id] = {
+          weightKg: pr.weight_kg,
+          reps: pr.reps,
+          oneRmKg: pr.one_rm_kg,
+          date: pr.achieved_at
+        };
+      });
+
+      set({ workoutHistory, personalRecords, isLoading: false });
+    } catch (e) {
+      console.warn('Failed to fetch workout data', e);
+      set({ isLoading: false });
+    }
   },
 
   createPlan: (planData, assignedClientIds) => {
@@ -261,6 +266,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const calculated1RM = calculate1RM(weightKg, reps);
     const existingPR = get().personalRecords[exerciseId];
     if (!existingPR || calculated1RM > existingPR.oneRmKg) {
+      const dateStr = new Date().toISOString();
       set((state) => ({
         personalRecords: {
           ...state.personalRecords,
@@ -268,10 +274,26 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             weightKg,
             reps,
             oneRmKg: calculated1RM,
-            date: new Date().toISOString(),
+            date: dateStr,
           },
         },
       }));
+      
+      const userId = useAuthStore.getState().profile?.id;
+      if (userId) {
+        const payload = {
+          user_id: userId,
+          exercise_id: exerciseId,
+          weight_kg: weightKg,
+          reps: reps,
+          one_rm_kg: calculated1RM,
+          achieved_at: dateStr
+        };
+        supabase.from('personal_records').upsert(payload, { onConflict: 'user_id,exercise_id' })
+          .then(({error}) => {
+             if (error) queueOfflineTransaction('ADD_PR', payload);
+          });
+      }
     }
   },
 
@@ -391,18 +413,25 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       });
     });
 
-    const exerciseLogs: LoggedExerciseDetail[] = active.exercises.map((ex) => {
+    // Filter to only include exercises with at least 1 completed set
+    const completedExercises = active.exercises.filter((ex) =>
+      ex.sets.some((s) => s.isCompleted)
+    );
+    const exercisesToLog = completedExercises.length > 0 ? completedExercises : active.exercises;
+
+    const exerciseLogs: LoggedExerciseDetail[] = exercisesToLog.map((ex) => {
       const completedSets = ex.sets.filter((s) => s.isCompleted);
-      const totalExVolume = completedSets.reduce((acc, s) => acc + s.weightKg * s.reps, 0);
-      const maxWeight = completedSets.reduce((max, s) => Math.max(max, s.weightKg), 0);
+      const setsToUse = completedSets.length > 0 ? completedSets : ex.sets;
+      const totalExVolume = setsToUse.reduce((acc, s) => acc + s.weightKg * s.reps, 0);
+      const maxWeight = setsToUse.reduce((max, s) => Math.max(max, s.weightKg), 0);
       const avgReps =
-        completedSets.length > 0
-          ? Math.round(completedSets.reduce((acc, s) => acc + s.reps, 0) / completedSets.length)
+        setsToUse.length > 0
+          ? Math.round(setsToUse.reduce((acc, s) => acc + s.reps, 0) / setsToUse.length)
           : 10;
 
       return {
         name: ex.exerciseName,
-        sets: Math.max(1, completedSets.length),
+        sets: setsToUse.length,
         reps: `${avgReps} reps`,
         targetWeightKg: maxWeight || 20,
         totalVolumeKg: totalExVolume || maxWeight * 10,
@@ -415,11 +444,11 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       date: new Date().toISOString(),
       durationMinutes,
       totalVolumeKg,
-      exerciseCount: active.exercises.length,
+      exerciseCount: exercisesToLog.length,
       exerciseLogs,
     };
 
-    // If session belonged to a plan, automatically advance to next workout day in routine!
+    // If session belonged to a plan, automatically advance to next workout day in routine
     if (active.planId) {
       const planId = active.planId;
       const plan = get().savedPlans.find((p) => p.id === planId);
@@ -439,6 +468,46 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       activeSession: null,
       workoutHistory: [header, ...state.workoutHistory],
     }));
+
+    // Sync to Supabase
+    const userId = useAuthStore.getState().profile?.id;
+    if (userId) {
+      const logPayload = {
+        user_id: userId,
+        plan_id: null, // Skipping plan_id relational map for simplicity right now
+        title: header.title,
+        duration_minutes: header.durationMinutes,
+        total_volume_kg: header.totalVolumeKg,
+        exercise_count: header.exerciseCount,
+        created_at: header.date
+      };
+      
+      supabase.from('workout_logs').insert(logPayload).select('id').single()
+        .then(({ data, error }) => {
+          if (error) {
+             queueOfflineTransaction('FINISH_WORKOUT', logPayload);
+          } else if (data) {
+             // Successfully inserted workout header, now insert sets
+             const setPayloads: any[] = [];
+             exercisesToLog.forEach(ex => {
+               ex.sets.forEach(s => {
+                  setPayloads.push({
+                     workout_log_id: data.id,
+                     exercise_id: ex.exerciseId,
+                     exercise_name: ex.exerciseName,
+                     set_number: s.setNumber,
+                     weight_kg: s.weightKg,
+                     reps: s.reps,
+                     is_completed: s.isCompleted
+                  });
+               });
+             });
+             if (setPayloads.length > 0) {
+               supabase.from('workout_log_sets').insert(setPayloads).then();
+             }
+          }
+        });
+    }
 
     return header;
   },

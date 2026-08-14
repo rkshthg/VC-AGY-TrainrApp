@@ -1,12 +1,29 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNutritionStore } from '../store/nutritionStore';
+import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../lib/theme';
 
 export const NutritionChart: React.FC = () => {
-  const { macroTargets, todayMeals } = useNutritionStore();
+  const { macroTargets, todayMeals, setMacroTargets } = useNutritionStore();
+  const profile = useAuthStore((state) => state.profile);
+  const setProfile = useAuthStore((state) => state.setProfile);
   const theme = useTheme();
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [calInput, setCalInput] = useState('');
+  const [proteinInput, setProteinInput] = useState('');
+  const [carbsInput, setCarbsInput] = useState('');
+  const [fatInput, setFatInput] = useState('');
 
   let consumedCalories = 0;
   let consumedProtein = 0;
@@ -24,10 +41,10 @@ export const NutritionChart: React.FC = () => {
     consumedFat += meal.totalFatG || 0;
   });
 
-  const targetCalories = macroTargets.calories || 2100;
-  const targetProtein = macroTargets.protein || 180;
+  const targetCalories = macroTargets.calories || 2500;
+  const targetProtein = macroTargets.protein || 75;
   const targetCarbs = macroTargets.carbs || 250;
-  const targetFat = macroTargets.fat || 70;
+  const targetFat = macroTargets.fat || 65;
 
   const proteinPct = Math.min(100, Math.round((consumedProtein / targetProtein) * 100));
   const carbsPct = Math.min(100, Math.round((consumedCarbs / targetCarbs) * 100));
@@ -37,6 +54,34 @@ export const NutritionChart: React.FC = () => {
   const carbsKcal = Math.round(consumedCarbs * 4);
   const fatKcal = Math.round(consumedFat * 9);
   const remainingKcal = Math.max(0, targetCalories - consumedCalories);
+
+  const handleOpenModal = () => {
+    setCalInput(String(targetCalories));
+    setProteinInput(String(targetProtein));
+    setCarbsInput(String(targetCarbs));
+    setFatInput(String(targetFat));
+    setModalVisible(true);
+  };
+
+  const handleSaveOwnTargets = () => {
+    const calories = parseInt(calInput) || 2500;
+    const protein = parseFloat(proteinInput) || 75;
+    const carbs = parseFloat(carbsInput) || 250;
+    const fat = parseFloat(fatInput) || 65;
+
+    const newTargets = { calories, protein, carbs, fat };
+    setMacroTargets(newTargets);
+
+    if (profile) {
+      setProfile({
+        ...profile,
+        macroTargets: newTargets,
+      });
+    }
+
+    setModalVisible(false);
+    Alert.alert('Targets Updated 🎯', 'Your daily calorie & macro targets have been updated.');
+  };
 
   return (
     <View
@@ -49,7 +94,7 @@ export const NutritionChart: React.FC = () => {
         },
       ]}
     >
-      {/* Header Row: Title + Consumed / Target Subtitle & Remaining Pill */}
+      {/* Header Row: Title + Subtitle & Actions */}
       <View style={styles.energyFlowHeaderRow}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>Daily Energy & Macro Flow</Text>
@@ -57,18 +102,24 @@ export const NutritionChart: React.FC = () => {
             {consumedCalories.toLocaleString()} of {targetCalories.toLocaleString()} kcal consumed
           </Text>
         </View>
-        <View
-          style={[
-            styles.remainingPillBadge,
-            {
-              backgroundColor: theme.cardInner,
-              borderColor: theme.borderGold,
-            },
-          ]}
-        >
-          <Text style={[styles.remainingPillText, { color: theme.accentGold, flexDirection: 'row', alignItems: 'center' }]}>
-            <Ionicons name="flash-outline" size={12} color={theme.accentGold} /> {remainingKcal} left
-          </Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <TouchableOpacity
+            style={[
+              styles.editTargetsBtn,
+              {
+                backgroundColor: theme.cardInner,
+                borderColor: theme.isDark ? theme.accentGold : theme.primary,
+              },
+            ]}
+            onPress={handleOpenModal}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="pencil-outline" size={12} color={theme.isDark ? theme.accentGold : theme.primary} />
+            <Text style={[styles.editTargetsBtnText, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+              Edit Targets
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -172,6 +223,136 @@ export const NutritionChart: React.FC = () => {
           </Text>
         </View>
       </View>
+
+      {/* 🎯 SELF EDIT TARGETS MODAL */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                ...theme.shadow,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Set Macro Targets</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Text style={[styles.modalCloseText, { color: theme.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Daily Calorie Target (kcal):</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={calInput}
+              keyboardType="numeric"
+              onChangeText={setCalInput}
+              placeholder="2500"
+              placeholderTextColor={theme.textMuted}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Protein Target (g):</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={proteinInput}
+              keyboardType="numeric"
+              onChangeText={setProteinInput}
+              placeholder="75"
+              placeholderTextColor={theme.textMuted}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Carbohydrates Target (g):</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={carbsInput}
+              keyboardType="numeric"
+              onChangeText={setCarbsInput}
+              placeholder="250"
+              placeholderTextColor={theme.textMuted}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Fat Target (g):</Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={fatInput}
+              keyboardType="numeric"
+              onChangeText={setFatInput}
+              placeholder="65"
+              placeholderTextColor={theme.textMuted}
+            />
+
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modalCancelBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalSaveBtn,
+                  {
+                    backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+                onPress={handleSaveOwnTargets}
+              >
+                <Text
+                  style={[
+                    styles.modalSaveText,
+                    { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
+                  ]}
+                >
+                  Save Targets 🎯
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -259,5 +440,85 @@ const styles = StyleSheet.create({
   macroPillSub: {
     fontSize: 9.5,
     marginTop: 2,
+  },
+  editTargetsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  editTargetsBtnText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalCloseText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    paddingHorizontal: 8,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  modalInput: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderWidth: 1,
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  modalCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modalSaveBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  modalSaveText: {
+    fontSize: 13,
+    fontWeight: 'bold',
   },
 });

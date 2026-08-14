@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../lib/theme';
+import { useAuthStore } from '../store/authStore';
+import { formatWeight, formatLength } from '../lib/units';
 
 export interface TagPill {
   label: string;
@@ -56,6 +58,20 @@ export const ClientActivityCard: React.FC<ClientActivityProps> = ({
   const theme = useTheme();
 
   const acknowledged = isAcknowledged !== undefined ? isAcknowledged : internalAck;
+  const unitSystem = useAuthStore((state) => state.unitSystem);
+
+  const formatValueString = (valStr: string) => {
+    if (unitSystem === 'METRIC') return valStr;
+    const kgMatch = valStr.match(/^([\d.]+)\s*kg$/i);
+    if (kgMatch) {
+      return formatWeight(parseFloat(kgMatch[1]), unitSystem);
+    }
+    const cmMatch = valStr.match(/^([\d.]+)\s*cm$/i);
+    if (cmMatch) {
+      return formatLength(parseFloat(cmMatch[1]), unitSystem);
+    }
+    return valStr;
+  };
 
   const handleToggleAck = () => {
     if (!acknowledged) {
@@ -303,7 +319,7 @@ export const ClientActivityCard: React.FC<ClientActivityProps> = ({
                         ]}
                       >
                         <Text style={[styles.valBadgeLabel, { color: theme.textMuted }]}>{val.label}</Text>
-                        <Text style={[styles.valBadgeValue, { color: theme.text }]}>{val.value}</Text>
+                        <Text style={[styles.valBadgeValue, { color: theme.text }]}>{formatValueString(val.value)}</Text>
                       </View>
                     ))}
                   </View>

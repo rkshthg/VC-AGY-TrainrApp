@@ -10,7 +10,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../store/authStore';
 import { useNutritionStore } from '../store/nutritionStore';
+import { useTrainerStore } from '../store/trainerStore';
 import { useTheme } from '../lib/theme';
+import { formatWeight, formatLength } from '../lib/units';
+
+import { useWorkoutStore } from '../store/workoutStore';
+import { useProgressStore } from '../store/progressStore';
 
 interface CalendarLogModalProps {
   visible: boolean;
@@ -18,16 +23,22 @@ interface CalendarLogModalProps {
 }
 
 export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onClose }) => {
-  const { role } = useAuthStore();
+  const { role, unitSystem } = useAuthStore();
   const selectedDate = useNutritionStore((state) => state.selectedDate);
   const theme = useTheme();
 
+  const workoutHistory = useWorkoutStore((state) => state.workoutHistory);
+  const todayMeals = useNutritionStore((state) => state.todayMeals);
+  const weightHistory = useProgressStore((state) => state.weightHistory);
+  const checkinPhotos = useProgressStore((state) => state.checkinPhotos);
+
   const [activeDate, setActiveDate] = useState(selectedDate);
-  const [selectedClient, setSelectedClient] = useState<string>('Marcus Vance');
+  const [selectedClient, setSelectedClient] = useState<string>('All Clients');
 
   // Accordion expansion states for granular inspection
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     workout: true,
+    nutrition: true,
   });
 
   const toggleSection = (sectionKey: string) => {
@@ -37,17 +48,71 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
     }));
   };
 
-  // Days in August 2026 (31 days)
-  const currentMonth = 'August 2026';
-  const daysInMonth = Array.from({ length: 31 }, (_, i) => i + 1);
+  // Compute set of logged dates in YYYY-MM-DD format
+  const loggedDatesSet = new Set<string>();
+  workoutHistory.forEach((w) => {
+    if (w.date) loggedDatesSet.add(new Date(w.date).toISOString().split('T')[0]);
+  });
+  todayMeals.forEach((m) => {
+    if (m.timestamp) loggedDatesSet.add(new Date(m.timestamp).toISOString().split('T')[0]);
+  });
+  weightHistory.forEach((wh) => {
+    if (wh.date) loggedDatesSet.add(new Date(wh.date).toISOString().split('T')[0]);
+  });
+  checkinPhotos.forEach((cp) => {
+    if (cp.date) loggedDatesSet.add(new Date(cp.date).toISOString().split('T')[0]);
+  });
 
-  // Mock logged days (days with recorded activities)
-  const loggedDays = [2, 4, 5, 7, 8, 9, 10, 11];
+  // Helper to parse date string YYYY-MM-DD safely into local time Date object
+  const parseYYYYMMDD = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  };
+
+  const [viewDate, setViewDate] = useState(() => parseYYYYMMDD(activeDate));
+
+  const viewYear = viewDate.getFullYear();
+  const viewMonthIndex = viewDate.getMonth(); // 0-11
+  const viewMonthNum = viewMonthIndex + 1; // 1-12
+  const currentMonthStr = `${viewYear}-${viewMonthNum < 10 ? '0' + viewMonthNum : viewMonthNum}`;
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const currentMonth = `${monthNames[viewMonthIndex]} ${viewYear}`;
+
+  const daysInMonthCount = new Date(viewYear, viewMonthNum, 0).getDate();
+  const daysInMonth = Array.from({ length: daysInMonthCount }, (_, i) => i + 1);
+
+  // Compute offset: first day of week for current month (0 = Sunday, 1 = Monday...)
+  const firstDayOfWeek = new Date(viewYear, viewMonthIndex, 1).getDay();
+  const emptyDays = Array.from({ length: firstDayOfWeek });
+
+  const loggedDays = daysInMonth.filter((dayNum) => {
+    const dayStr = `${currentMonthStr}-${dayNum < 10 ? '0' + dayNum : dayNum}`;
+    return loggedDatesSet.has(dayStr);
+  });
+
+  const handlePrevMonth = () => {
+    setViewDate(new Date(viewYear, viewMonthIndex - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setViewDate(new Date(viewYear, viewMonthIndex + 1, 1));
+  };
 
   const handleSelectDay = (dayNum: number) => {
-    const formattedDate = `2026-08-${dayNum < 10 ? '0' + dayNum : dayNum}`;
+    const formattedDate = `${currentMonthStr}-${dayNum < 10 ? '0' + dayNum : dayNum}`;
     setActiveDate(formattedDate);
   };
+
+  const dayWorkouts = workoutHistory.filter((w) => {
+    if (!w.date) return false;
+    return new Date(w.date).toISOString().split('T')[0] === activeDate;
+  });
+
+  const dayMeals = todayMeals.filter((m) => {
+    if (!m.timestamp) return false;
+    return new Date(m.timestamp).toISOString().split('T')[0] === activeDate;
+  });
 
   const formattedActiveDateLabel = new Date(activeDate).toLocaleDateString([], {
     weekday: 'long',
@@ -55,6 +120,68 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
     day: 'numeric',
     year: 'numeric',
   });
+
+  // Calculate dynamic weight/health metrics for activeDate
+  const dayWeightLog = weightHistory.find((wh) => {
+    if (!wh.date) return false;
+    return new Date(wh.date).toISOString().split('T')[0] === activeDate;
+  });
+
+  const checkinLogs = useProgressStore((state) => state.checkinLogs);
+  const dayCheckin = checkinLogs.find((cl) => {
+    if (!cl.date) return false;
+    return new Date(cl.date).toISOString().split('T')[0] === activeDate;
+  });
+
+  const dayWeightLogVal = dayWeightLog?.weightKg || dayCheckin?.weightKg;
+  const weight = dayWeightLogVal ? formatWeight(dayWeightLogVal, unitSystem) : 'N/A';
+
+  // Compile all metrics recorded on this day
+  const recordedMetrics: { label: string; value: string }[] = [];
+
+  if (dayWeightLogVal) {
+    recordedMetrics.push({
+      label: 'Body Weight',
+      value: formatWeight(dayWeightLogVal, unitSystem),
+    });
+  }
+
+  if (dayCheckin?.measurements) {
+    const m = dayCheckin.measurements;
+    if (m.neckCm !== undefined && m.neckCm !== null) {
+      recordedMetrics.push({ label: 'Neck Tape', value: formatLength(m.neckCm, unitSystem) });
+    }
+    if (m.shouldersCm !== undefined && m.shouldersCm !== null) {
+      recordedMetrics.push({ label: 'Shoulders Tape', value: formatLength(m.shouldersCm, unitSystem) });
+    }
+    if (m.chestCm !== undefined && m.chestCm !== null) {
+      recordedMetrics.push({ label: 'Chest Tape', value: formatLength(m.chestCm, unitSystem) });
+    }
+    if (m.waistCm !== undefined && m.waistCm !== null) {
+      recordedMetrics.push({ label: 'Waist Tape', value: formatLength(m.waistCm, unitSystem) });
+    }
+    if (m.hipsCm !== undefined && m.hipsCm !== null) {
+      recordedMetrics.push({ label: 'Hips Tape', value: formatLength(m.hipsCm, unitSystem) });
+    }
+    if (m.bicepsCm !== undefined && m.bicepsCm !== null) {
+      recordedMetrics.push({ label: 'Biceps Tape', value: formatLength(m.bicepsCm, unitSystem) });
+    }
+    if (m.bicepsLCm !== undefined && m.bicepsLCm !== null) {
+      recordedMetrics.push({ label: 'Biceps L Tape', value: formatLength(m.bicepsLCm, unitSystem) });
+    }
+    if (m.bicepsRCm !== undefined && m.bicepsRCm !== null) {
+      recordedMetrics.push({ label: 'Biceps R Tape', value: formatLength(m.bicepsRCm, unitSystem) });
+    }
+    if (m.thighsCm !== undefined && m.thighsCm !== null) {
+      recordedMetrics.push({ label: 'Thighs Tape', value: formatLength(m.thighsCm, unitSystem) });
+    }
+    if (m.thighsLCm !== undefined && m.thighsLCm !== null) {
+      recordedMetrics.push({ label: 'Thighs L Tape', value: formatLength(m.thighsLCm, unitSystem) });
+    }
+    if (m.thighsRCm !== undefined && m.thighsRCm !== null) {
+      recordedMetrics.push({ label: 'Thighs R Tape', value: formatLength(m.thighsRCm, unitSystem) });
+    }
+  }
 
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
@@ -106,7 +233,7 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
                   FILTER CLIENT LOGS (TRAINER MODE)
                 </Text>
                 <View style={styles.clientPillsRow}>
-                  {(['All Clients', 'Marcus Vance', 'Sarah Jenkins', 'David Miller'] as const).map((client) => {
+                  {['All Clients', ...useTrainerStore.getState().clients.map((c) => c.fullName)].map((client) => {
                     const isActive = selectedClient === client;
                     return (
                       <TouchableOpacity
@@ -157,11 +284,11 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
               ]}
             >
               <View style={styles.monthHeaderRow}>
-                <TouchableOpacity>
+                <TouchableOpacity onPress={handlePrevMonth}>
                   <Ionicons name="chevron-back-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
                 </TouchableOpacity>
                 <Text style={[styles.monthTitle, { color: theme.text }]}>{currentMonth}</Text>
-                <TouchableOpacity>
+                <TouchableOpacity onPress={handleNextMonth}>
                   <Ionicons name="chevron-forward-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
                 </TouchableOpacity>
               </View>
@@ -177,70 +304,114 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
 
               {/* Days Grid */}
               <View style={styles.daysGrid}>
-                {daysInMonth.map((dayNum) => {
-                  const dateStr = `2026-08-${dayNum < 10 ? '0' + dayNum : dayNum}`;
-                  const isSelected = activeDate === dateStr;
-                  const hasLog = loggedDays.includes(dayNum);
+                {(() => {
+                  const allCells = [
+                    ...emptyDays.map((_, idx) => ({ type: 'empty' as const, id: `empty-${idx}`, dayNum: null })),
+                    ...daysInMonth.map((dayNum) => ({ type: 'day' as const, id: `day-${dayNum}`, dayNum })),
+                  ];
+                  const rows: typeof allCells[] = [];
+                  for (let i = 0; i < allCells.length; i += 7) {
+                    rows.push(allCells.slice(i, i + 7));
+                  }
 
-                  return (
-                    <TouchableOpacity
-                      key={dayNum}
-                      style={[
-                        styles.dayCell,
-                        {
-                          backgroundColor: isSelected
-                            ? theme.isDark
-                              ? theme.accentGold
-                              : theme.primary
-                            : theme.cardAlt,
-                          borderColor: isSelected
-                            ? 'transparent'
-                            : hasLog
-                            ? theme.isDark
-                              ? theme.borderGold
-                              : theme.primaryLight
-                            : 'transparent',
-                        },
-                      ]}
-                      onPress={() => handleSelectDay(dayNum)}
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={[
-                          styles.dayNumText,
-                          {
-                            color: isSelected
-                              ? theme.isDark
-                                ? '#0A1A12'
-                                : '#FFFFFF'
-                              : hasLog
-                              ? theme.text
-                              : theme.textMuted,
-                            fontWeight: isSelected || hasLog ? 'bold' : 'normal',
-                          },
-                        ]}
-                      >
-                        {dayNum}
-                      </Text>
-                      {hasLog && (
-                        <View
-                          style={[
-                            styles.dotIndicator,
-                            {
-                              backgroundColor: isSelected
-                                ? theme.isDark
-                                  ? '#0A1A12'
-                                  : '#FFFFFF'
-                                : theme.isDark
-                                ? theme.accentGold
-                                : theme.primary,
-                            },
-                          ]}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
+                  return rows.map((weekRow, rowIdx) => (
+                    <View key={`week-${rowIdx}`} style={styles.weekRow}>
+                      {weekRow.map((cell) => {
+                        if (cell.type === 'empty') {
+                          return (
+                            <View
+                              key={cell.id}
+                              style={[
+                                styles.dayCell,
+                                {
+                                  backgroundColor: 'transparent',
+                                  borderColor: 'transparent',
+                                },
+                              ]}
+                            />
+                          );
+                        }
+
+                        const dayNum = cell.dayNum!;
+                        const dateStr = `${currentMonthStr}-${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                        const isSelected = activeDate === dateStr;
+                        const hasLog = loggedDays.includes(dayNum);
+
+                        return (
+                          <TouchableOpacity
+                            key={cell.id}
+                            style={[
+                              styles.dayCell,
+                              {
+                                backgroundColor: isSelected
+                                  ? theme.isDark
+                                    ? theme.accentGold
+                                    : theme.primary
+                                  : theme.cardAlt,
+                                borderColor: isSelected
+                                  ? 'transparent'
+                                  : hasLog
+                                  ? theme.isDark
+                                    ? theme.borderGold
+                                    : theme.primaryLight
+                                  : 'transparent',
+                              },
+                            ]}
+                            onPress={() => handleSelectDay(dayNum)}
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.dayNumText,
+                                {
+                                  color: isSelected
+                                    ? theme.isDark
+                                      ? '#0A1A12'
+                                      : '#FFFFFF'
+                                    : hasLog
+                                    ? theme.text
+                                    : theme.textMuted,
+                                  fontWeight: isSelected || hasLog ? 'bold' : 'normal',
+                                },
+                              ]}
+                            >
+                              {dayNum}
+                            </Text>
+                            {hasLog && (
+                              <View
+                                style={[
+                                  styles.dotIndicator,
+                                  {
+                                    backgroundColor: isSelected
+                                      ? theme.isDark
+                                        ? '#0A1A12'
+                                        : '#FFFFFF'
+                                      : theme.isDark
+                                      ? theme.accentGold
+                                      : theme.primary,
+                                  },
+                                ]}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {weekRow.length < 7 &&
+                        Array.from({ length: 7 - weekRow.length }).map((_, idx) => (
+                          <View
+                            key={`pad-${idx}`}
+                            style={[
+                              styles.dayCell,
+                              {
+                                backgroundColor: 'transparent',
+                                borderColor: 'transparent',
+                              },
+                            ]}
+                          />
+                        ))}
+                    </View>
+                  ));
+                })()}
               </View>
             </View>
 
@@ -291,93 +462,86 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                     <Ionicons name="barbell-outline" size={20} color={theme.isDark ? theme.accentGold : theme.primary} />
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.logItemTitle, { color: theme.text }]}>Push Split (Chest & Shoulders)</Text>
+                      <Text style={[styles.logItemTitle, { color: theme.text }]}>Workout Session Logs</Text>
                       <Text style={[styles.logItemSub, { color: theme.textSecondary }]}>
-                        Duration: 42m • Total Volume: 3,850 kg • 14 Sets
+                        {dayWorkouts.length > 0
+                          ? `${dayWorkouts.length} workout(s) logged on this date`
+                          : 'No workouts logged on this date'}
                       </Text>
                     </View>
                   </View>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      {
-                        backgroundColor: expandedSections['workout']
-                          ? theme.isDark
-                            ? theme.cardInner
-                            : theme.badgeBg
-                          : theme.cardInner,
-                        borderColor: expandedSections['workout'] ? theme.accentGold : theme.border,
-                      },
-                    ]}
-                    onPress={() => toggleSection('workout')}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons
-                        name={expandedSections['workout'] ? 'chevron-up-outline' : 'chevron-down-outline'}
-                        size={12}
-                        color={
-                          expandedSections['workout']
+                  {dayWorkouts.length > 0 && (
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleBtn,
+                        {
+                          backgroundColor: expandedSections['workout']
                             ? theme.isDark
-                              ? theme.accentGold
-                              : theme.primary
-                            : theme.textSecondary
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.toggleBtnText,
-                          {
-                            color: expandedSections['workout']
+                              ? theme.cardInner
+                              : theme.badgeBg
+                            : theme.cardInner,
+                          borderColor: expandedSections['workout'] ? theme.accentGold : theme.border,
+                        },
+                      ]}
+                      onPress={() => toggleSection('workout')}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons
+                          name={expandedSections['workout'] ? 'chevron-up-outline' : 'chevron-down-outline'}
+                          size={12}
+                          color={
+                            expandedSections['workout']
                               ? theme.isDark
                                 ? theme.accentGold
                                 : theme.primary
-                              : theme.textSecondary,
-                          },
-                        ]}
-                      >
-                        {expandedSections['workout'] ? 'Hide' : 'Details'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                              : theme.textSecondary
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.toggleBtnText,
+                            {
+                              color: expandedSections['workout']
+                                ? theme.isDark
+                                  ? theme.accentGold
+                                  : theme.primary
+                                : theme.textSecondary,
+                            },
+                          ]}
+                        >
+                          {expandedSections['workout'] ? 'Hide' : 'Details'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
-                {expandedSections['workout'] && (
+                {expandedSections['workout'] && dayWorkouts.length > 0 && (
                   <View style={[styles.granularBox, { borderTopColor: theme.border }]}>
-                    <Text
-                      style={[
-                        styles.granularTitle,
-                        { color: theme.isDark ? theme.accentGold : theme.primary },
-                      ]}
-                    >
-                      Exercise & Set Audit Logs:
-                    </Text>
-
-                    <View style={[styles.exerciseItem, { backgroundColor: theme.cardInner }]}>
-                      <Text style={[styles.exerciseName, { color: theme.text }]}>1. Barbell Bench Press (3 Sets)</Text>
-                      <Text style={[styles.setDetailText, { color: theme.textSecondary }]}>• Set 1: 80 kg × 10 reps (800 kg)</Text>
-                      <Text style={[styles.setDetailText, { color: theme.textSecondary }]}>• Set 2: 85 kg × 8 reps (680 kg)</Text>
-                      <Text style={[styles.setDetailText, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
-                        • Set 3: 90 kg × 6 reps (540 kg) — Personal Record!
-                      </Text>
-                    </View>
-
-                    <View style={[styles.exerciseItem, { backgroundColor: theme.cardInner }]}>
-                      <Text style={[styles.exerciseName, { color: theme.text }]}>2. Incline Dumbbell Press (2 Sets)</Text>
-                      <Text style={[styles.setDetailText, { color: theme.textSecondary }]}>• Set 1: 28 kg × 12 reps (336 kg)</Text>
-                      <Text style={[styles.setDetailText, { color: theme.textSecondary }]}>• Set 2: 30 kg × 10 reps (300 kg)</Text>
-                    </View>
-
-                    <View style={[styles.exerciseItem, { backgroundColor: theme.cardInner }]}>
-                      <Text style={[styles.exerciseName, { color: theme.text }]}>3. Standing Overhead Press (2 Sets)</Text>
-                      <Text style={[styles.setDetailText, { color: theme.textSecondary }]}>• Set 1: 50 kg × 8 reps (400 kg)</Text>
-                      <Text style={[styles.setDetailText, { color: theme.textSecondary }]}>• Set 2: 55 kg × 6 reps (330 kg)</Text>
-                    </View>
+                    {dayWorkouts.map((w, wIdx) => (
+                      <View key={w.id || wIdx} style={[styles.exerciseItem, { backgroundColor: theme.cardInner }]}>
+                        <Text style={[styles.exerciseName, { color: theme.text }]}>
+                          {wIdx + 1}. {w.title} ({w.durationMinutes}m • {w.totalVolumeKg} kg)
+                        </Text>
+                        {w.exerciseLogs && w.exerciseLogs.length > 0 ? (
+                          w.exerciseLogs.map((ex, exIdx) => (
+                            <Text key={exIdx} style={[styles.setDetailText, { color: theme.textSecondary }]}>
+                              • {ex.name}: {ex.sets} set(s) completed ({ex.totalVolumeKg} kg)
+                            </Text>
+                          ))
+                        ) : (
+                          <Text style={[styles.setDetailText, { color: theme.textMuted }]}>
+                            • {w.exerciseCount} exercises completed
+                          </Text>
+                        )}
+                      </View>
+                    ))}
                   </View>
                 )}
               </View>
 
-              {/* NUTRITION LOG (EXPANDABLE GRANULAR DETAILS) */}
+              {/* 🥗 NUTRITION LOG (EXPANDABLE GRANULAR DETAILS) */}
               <View
                 style={[
                   styles.expandableCard,
@@ -388,127 +552,75 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                     <Ionicons name="nutrition-outline" size={20} color={theme.isDark ? theme.accentGold : theme.primary} />
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.logItemTitle, { color: theme.text }]}>Daily Nutrition & Macros</Text>
+                      <Text style={[styles.logItemTitle, { color: theme.text }]}>Daily Nutrition & Meals</Text>
                       <Text style={[styles.logItemSub, { color: theme.textSecondary }]}>
-                        1,850 / 2,100 kcal • 158g P • 210g C • 52g F
+                        {dayMeals.length > 0
+                          ? `${dayMeals.length} meal(s) logged on this date`
+                          : 'No meals logged on this date'}
                       </Text>
                     </View>
                   </View>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      {
-                        backgroundColor: expandedSections['nutrition']
-                          ? theme.isDark
-                            ? theme.cardInner
-                            : theme.badgeBg
-                          : theme.cardInner,
-                        borderColor: expandedSections['nutrition'] ? theme.accentGold : theme.border,
-                      },
-                    ]}
-                    onPress={() => toggleSection('nutrition')}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons
-                        name={expandedSections['nutrition'] ? 'chevron-up-outline' : 'chevron-down-outline'}
-                        size={12}
-                        color={
-                          expandedSections['nutrition']
+                  {dayMeals.length > 0 && (
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleBtn,
+                        {
+                          backgroundColor: expandedSections['nutrition']
                             ? theme.isDark
-                              ? theme.accentGold
-                              : theme.primary
-                            : theme.textSecondary
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.toggleBtnText,
-                          {
-                            color: expandedSections['nutrition']
+                              ? theme.cardInner
+                              : theme.badgeBg
+                            : theme.cardInner,
+                          borderColor: expandedSections['nutrition'] ? theme.accentGold : theme.border,
+                        },
+                      ]}
+                      onPress={() => toggleSection('nutrition')}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons
+                          name={expandedSections['nutrition'] ? 'chevron-up-outline' : 'chevron-down-outline'}
+                          size={12}
+                          color={
+                            expandedSections['nutrition']
                               ? theme.isDark
                                 ? theme.accentGold
                                 : theme.primary
-                              : theme.textSecondary,
-                          },
-                        ]}
-                      >
-                        {expandedSections['nutrition'] ? 'Hide' : 'Details'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                              : theme.textSecondary
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.toggleBtnText,
+                            {
+                              color: expandedSections['nutrition']
+                                ? theme.isDark
+                                  ? theme.accentGold
+                                  : theme.primary
+                                : theme.textSecondary,
+                            },
+                          ]}
+                        >
+                          {expandedSections['nutrition'] ? 'Hide' : 'Details'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
-                {expandedSections['nutrition'] && (
+                {expandedSections['nutrition'] && dayMeals.length > 0 && (
                   <View style={[styles.granularBox, { borderTopColor: theme.border }]}>
-                    <Text
-                      style={[
-                        styles.granularTitle,
-                        { color: theme.isDark ? theme.accentGold : theme.primary },
-                      ]}
-                    >
-                      Logged Meals Breakdown:
-                    </Text>
-
-                    <View style={[styles.mealItemRow, { backgroundColor: theme.cardInner }]}>
-                      <Text
-                        style={[
-                          styles.mealCatBadge,
-                          { color: theme.isDark ? theme.accentGold : theme.primary },
-                        ]}
-                      >
-                        BREAKFAST
-                      </Text>
-                      <Text style={[styles.mealNameText, { color: theme.text }]}>Oatmeal, Whole Eggs & Berries</Text>
-                      <Text
-                        style={[
-                          styles.mealKcalText,
-                          { color: theme.isDark ? theme.accentGold : theme.primary },
-                        ]}
-                      >
-                        520 kcal (28g P)
-                      </Text>
-                    </View>
-
-                    <View style={[styles.mealItemRow, { backgroundColor: theme.cardInner }]}>
-                      <Text
-                        style={[
-                          styles.mealCatBadge,
-                          { color: theme.isDark ? theme.accentGold : theme.primary },
-                        ]}
-                      >
-                        LUNCH
-                      </Text>
-                      <Text style={[styles.mealNameText, { color: theme.text }]}>Chicken Tikka Bowl w/ Rice</Text>
-                      <Text
-                        style={[
-                          styles.mealKcalText,
-                          { color: theme.isDark ? theme.accentGold : theme.primary },
-                        ]}
-                      >
-                        680 kcal (48g P)
-                      </Text>
-                    </View>
-
-                    <View style={[styles.mealItemRow, { backgroundColor: theme.cardInner }]}>
-                      <Text
-                        style={[
-                          styles.mealCatBadge,
-                          { color: theme.isDark ? theme.accentGold : theme.primary },
-                        ]}
-                      >
-                        DINNER
-                      </Text>
-                      <Text style={[styles.mealNameText, { color: theme.text }]}>Pan-seared Salmon & Asparagus</Text>
-                      <Text
-                        style={[
-                          styles.mealKcalText,
-                          { color: theme.isDark ? theme.accentGold : theme.primary },
-                        ]}
-                      >
-                        650 kcal (42g P)
-                      </Text>
-                    </View>
+                    {dayMeals.map((m, mIdx) => (
+                      <View key={m.id || mIdx} style={[styles.exerciseItem, { backgroundColor: theme.cardInner }]}>
+                        <Text style={[styles.exerciseName, { color: theme.text }]}>
+                          {mIdx + 1}. {m.dishName} ({m.totalCalories} kcal • {m.totalProteinG}g P • {m.totalCarbsG}g C • {m.totalFatG}g F)
+                        </Text>
+                        {m.items.map((item, itemIdx) => (
+                          <Text key={itemIdx} style={[styles.setDetailText, { color: theme.textSecondary }]}>
+                            • {item.name} ({item.quantity}): {item.calories} kcal
+                          </Text>
+                        ))}
+                      </View>
+                    ))}
                   </View>
                 )}
               </View>
@@ -526,7 +638,7 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.logItemTitle, { color: theme.text }]}>Body Weight & Health Metrics</Text>
                       <Text style={[styles.logItemSub, { color: theme.textSecondary }]}>
-                        Weight: 76.4 kg • Body Fat: 16.4% • BMI: 24.5
+                        {weight !== 'N/A' ? `Weight: ${weight}` : 'No metrics logged on this date'}
                       </Text>
                     </View>
                   </View>
@@ -586,55 +698,27 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
                       Recorded Body Tape & Calculated Metrics:
                     </Text>
 
-                    <View style={styles.metricsGridRow}>
-                      <View style={[styles.metricMiniTile, { backgroundColor: theme.cardInner }]}>
-                        <Text style={[styles.metricMiniLabel, { color: theme.textMuted }]}>Body Weight</Text>
-                        <Text
-                          style={[
-                            styles.metricMiniVal,
-                            { color: theme.isDark ? theme.accentGold : theme.primary },
-                          ]}
-                        >
-                          76.4 kg
-                        </Text>
+                    {recordedMetrics.length > 0 ? (
+                      <View style={styles.metricsGridRow}>
+                        {recordedMetrics.map((item, idx) => (
+                          <View key={idx} style={[styles.metricMiniTile, { backgroundColor: theme.cardInner }]}>
+                            <Text style={[styles.metricMiniLabel, { color: theme.textMuted }]}>{item.label}</Text>
+                            <Text
+                              style={[
+                                styles.metricMiniVal,
+                                { color: theme.isDark ? theme.accentGold : theme.primary },
+                              ]}
+                            >
+                              {item.value}
+                            </Text>
+                          </View>
+                        ))}
                       </View>
-
-                      <View style={[styles.metricMiniTile, { backgroundColor: theme.cardInner }]}>
-                        <Text style={[styles.metricMiniLabel, { color: theme.textMuted }]}>Body Fat %</Text>
-                        <Text
-                          style={[
-                            styles.metricMiniVal,
-                            { color: theme.isDark ? theme.accentGold : theme.primary },
-                          ]}
-                        >
-                          16.4%
-                        </Text>
-                      </View>
-
-                      <View style={[styles.metricMiniTile, { backgroundColor: theme.cardInner }]}>
-                        <Text style={[styles.metricMiniLabel, { color: theme.textMuted }]}>Waist Tape</Text>
-                        <Text
-                          style={[
-                            styles.metricMiniVal,
-                            { color: theme.isDark ? theme.accentGold : theme.primary },
-                          ]}
-                        >
-                          84 cm
-                        </Text>
-                      </View>
-
-                      <View style={[styles.metricMiniTile, { backgroundColor: theme.cardInner }]}>
-                        <Text style={[styles.metricMiniLabel, { color: theme.textMuted }]}>Neck Tape</Text>
-                        <Text
-                          style={[
-                            styles.metricMiniVal,
-                            { color: theme.isDark ? theme.accentGold : theme.primary },
-                          ]}
-                        >
-                          39 cm
-                        </Text>
-                      </View>
-                    </View>
+                    ) : (
+                      <Text style={[styles.setDetailText, { color: theme.textMuted, marginVertical: 10, textAlign: 'center', width: '100%' }]}>
+                        No weight or health metrics logged on this date.
+                      </Text>
+                    )}
                   </View>
                 )}
               </View>
@@ -765,9 +849,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   daysGrid: {
+    width: '100%',
+  },
+  weekRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    width: '100%',
   },
   dayCell: {
     width: '13%',

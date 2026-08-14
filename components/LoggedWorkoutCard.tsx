@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CompletedWorkoutHeader } from '../store/workoutStore';
+import { useAuthStore } from '../store/authStore';
+import { formatVolume } from '../lib/units';
 import { useTheme } from '../lib/theme';
 
 export interface LoggedWorkoutCardProps {
@@ -15,6 +17,7 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const theme = useTheme();
+  const unitSystem = useAuthStore((state) => state.unitSystem);
 
   // Format date label (e.g. Yesterday, Today, or Jul 20)
   const formatSessionDate = (isoString: string) => {
@@ -78,18 +81,8 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
           </Text>
         </View>
 
-        <Text style={[styles.totalVolumeText, { color: theme.text }]}>
-          {session.totalVolumeKg >= 1000
-            ? `${(session.totalVolumeKg / 1000).toFixed(1)}k`
-            : session.totalVolumeKg}{' '}
-          <Text
-            style={[
-              styles.volumeUnit,
-              { color: theme.isDark ? theme.accentGold : theme.primary },
-            ]}
-          >
-            kg
-          </Text>
+        <Text style={[styles.totalVolumeText, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+          {formatVolume(session.totalVolumeKg, unitSystem)}
         </Text>
       </View>
 

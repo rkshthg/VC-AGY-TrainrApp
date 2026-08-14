@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, LayoutChangeEvent } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, LayoutChangeEvent, ActivityIndicator } from 'react-native';
 import Svg, { Path, Rect, Line, Defs, LinearGradient, Stop, Text as SvgText, Circle } from 'react-native-svg';
 import { useTheme } from '../lib/theme';
+import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
+import { formatVolume, getWeightUnitLabel } from '../lib/units';
 
 export type WorkoutMetricFilter = 'VOLUME' | 'DURATION' | 'REPS';
 export type NutritionMetricFilter = 'CALORIES' | 'PROTEIN';
@@ -27,74 +30,169 @@ export interface AnalyticsDataPoint {
 }
 
 export const WeeklyProfileAnalytics: React.FC = () => {
+  const profile = useAuthStore((state) => state.profile);
+  const unitSystem = useAuthStore((state) => state.unitSystem);
   const [workoutFilter, setWorkoutFilter] = useState<WorkoutMetricFilter>('VOLUME');
   const [nutritionFilter, setNutritionFilter] = useState<NutritionMetricFilter>('CALORIES');
   const [timeRange, setTimeRange] = useState<TimeHorizonFilter>('4W');
   const [containerWidth, setContainerWidth] = useState<number>(360);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [workouts, setWorkouts] = useState<any[]>([]);
+  const [meals, setMeals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const theme = useTheme();
+
+  useEffect(() => {
+    const loadData = async () => {
+      const userId = profile?.id;
+      if (!userId) return;
+      setLoading(true);
+      try {
+        const [workoutsRes, mealsRes] = await Promise.all([
+          supabase
+            .from('workout_logs')
+            .select('*, workout_log_sets(reps, is_completed)')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('meals')
+            .select('created_at, total_calories, total_protein_g')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true })
+        ]);
+
+        if (workoutsRes.data) setWorkouts(workoutsRes.data);
+        if (mealsRes.data) setMeals(mealsRes.data);
+      } catch (e) {
+        console.warn('Failed to load analytics data:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [profile?.id]);
 
   // Helper to generate dynamic daily analytics for the past 7 days (ending today)
   const getDynamicLast7DaysData = (): AnalyticsDataPoint[] => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    // 7 sample daily metrics (from 6 days ago up to Today)
-    const sampleMetrics = [
-      { volKg: 18500, durationMins: 45, reps: 120, caloriesKcal: 2650, proteinG: 165 },
-      { volKg: 22000, durationMins: 50, reps: 140, caloriesKcal: 2700, proteinG: 170 },
-      { volKg: 0,     durationMins: 0,  reps: 0,   caloriesKcal: 2200, proteinG: 145 }, // Rest day
-      { volKg: 24500, durationMins: 55, reps: 150, caloriesKcal: 2800, proteinG: 175 },
-      { volKg: 20000, durationMins: 45, reps: 130, caloriesKcal: 2600, proteinG: 160 },
-      { volKg: 26000, durationMins: 60, reps: 160, caloriesKcal: 2900, proteinG: 180 },
-      { volKg: 15000, durationMins: 35, reps: 95,  caloriesKcal: 2450, proteinG: 155 }, // Today
-    ];
-
-    const now = new Date();
     const result: AnalyticsDataPoint[] = [];
+    const now = new Date();
 
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
+      const d = new Date();
       d.setDate(now.getDate() - i);
+      const dayStr = d.toISOString().split('T')[0]; // "YYYY-MM-DD"
 
       const dayName = dayNames[d.getDay()];
       const monthName = monthNames[d.getMonth()];
       const dateNum = d.getDate();
-      const metric = sampleMetrics[6 - i];
-
       const isToday = i === 0;
       const isYesterday = i === 1;
       const dayDescriptor = isToday ? 'Today' : isYesterday ? 'Yesterday' : dayName;
 
+      // Filter data for this local day
+      const dayWorkouts = workouts.filter(w => {
+        const wDate = new Date(w.created_at);
+        return wDate.toLocaleDateString('en-CA') === dayStr;
+      });
+      const dayMeals = meals.filter(m => {
+        const mDate = new Date(m.created_at);
+        return mDate.toLocaleDateString('en-CA') === dayStr;
+      });
+
+      // Sum metrics
+      const volKg = dayWorkouts.reduce((sum, w) => sum + Number(w.total_volume_kg || 0), 0);
+      const durationMins = dayWorkouts.reduce((sum, w) => sum + Number(w.duration_minutes || 0), 0);
+      const reps = dayWorkouts.reduce((sum, w) => {
+        const setReps = (w.workout_log_sets || [])
+          .filter((s: any) => s.is_completed)
+          .reduce((sSum: number, s: any) => sSum + Number(s.reps || 0), 0);
+        return sum + setReps;
+      }, 0);
+
+      const caloriesKcal = dayMeals.reduce((sum, m) => sum + Number(m.total_calories || 0), 0);
+      const proteinG = dayMeals.reduce((sum, m) => sum + Number(m.total_protein_g || 0), 0);
+
       result.push({
         label: isToday ? 'Today' : dayName,
         fullLabel: `${dayDescriptor} (${monthName} ${dateNum})`,
-        volKg: metric.volKg,
-        durationMins: metric.durationMins,
-        reps: metric.reps,
-        caloriesKcal: metric.caloriesKcal,
-        proteinG: metric.proteinG,
+        volKg,
+        durationMins,
+        reps,
+        caloriesKcal,
+        proteinG: Math.round(proteinG),
       });
     }
 
     return result;
   };
 
-  // Mock multi-week Sunday milestone dataset (12 Weeks history)
-  const full12WeeksData: AnalyticsDataPoint[] = [
-    { label: 'May 12', fullLabel: 'Week ending May 12', volKg: 124000, durationMins: 42, reps: 320, caloriesKcal: 2650, proteinG: 165 },
-    { label: 'May 19', fullLabel: 'Week ending May 19', volKg: 138000, durationMins: 46, reps: 340, caloriesKcal: 2720, proteinG: 170 },
-    { label: 'May 26', fullLabel: 'Week ending May 26', volKg: 145000, durationMins: 48, reps: 360, caloriesKcal: 2680, proteinG: 168 },
-    { label: 'Jun 02', fullLabel: 'Week ending Jun 02', volKg: 152000, durationMins: 50, reps: 380, caloriesKcal: 2800, proteinG: 175 },
-    { label: 'Jun 09', fullLabel: 'Week ending Jun 09', volKg: 148000, durationMins: 47, reps: 365, caloriesKcal: 2750, proteinG: 172 },
-    { label: 'Jun 16', fullLabel: 'Week ending Jun 16', volKg: 164000, durationMins: 52, reps: 400, caloriesKcal: 2850, proteinG: 180 },
-    { label: 'Jun 23', fullLabel: 'Week ending Jun 23', volKg: 171000, durationMins: 55, reps: 420, caloriesKcal: 2900, proteinG: 182 },
-    { label: 'Jun 30', fullLabel: 'Week ending Jun 30', volKg: 168000, durationMins: 53, reps: 410, caloriesKcal: 2820, proteinG: 178 },
-    { label: 'Jul 07', fullLabel: 'Week ending Jul 07', volKg: 178000, durationMins: 56, reps: 440, caloriesKcal: 2950, proteinG: 185 },
-    { label: 'Jul 14', fullLabel: 'Week ending Jul 14', volKg: 185000, durationMins: 58, reps: 460, caloriesKcal: 3000, proteinG: 190 },
-    { label: 'Jul 21', fullLabel: 'Week ending Jul 21', volKg: 192000, durationMins: 60, reps: 480, caloriesKcal: 3050, proteinG: 192 },
-    { label: 'Jul 28', fullLabel: 'Week ending Jul 28', volKg: 198000, durationMins: 62, reps: 500, caloriesKcal: 3100, proteinG: 195 },
-  ];
+  // Helper to generate dynamic multi-week Sunday milestone dataset
+  const getDynamicMultiWeekData = (totalWeeks: number): AnalyticsDataPoint[] => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const now = new Date();
+    const result: AnalyticsDataPoint[] = [];
+
+    const currentDay = now.getDay();
+    const diffToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const thisMonday = new Date(now);
+    thisMonday.setDate(now.getDate() - diffToMonday);
+    thisMonday.setHours(0, 0, 0, 0);
+
+    for (let i = totalWeeks - 1; i >= 0; i--) {
+      const weekStart = new Date(thisMonday);
+      weekStart.setDate(thisMonday.getDate() - i * 7);
+
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 7); // Exclusive end
+
+      const sundayDate = new Date(weekStart);
+      sundayDate.setDate(weekStart.getDate() + 6);
+      const monthName = monthNames[sundayDate.getMonth()];
+      const dateNum = sundayDate.getDate();
+
+      const isCurrentWeek = i === 0;
+
+      // Filter data for this week range
+      const weekWorkouts = workouts.filter(w => {
+        const wDate = new Date(w.created_at);
+        return wDate >= weekStart && wDate < weekEnd;
+      });
+      const weekMeals = meals.filter(m => {
+        const mDate = new Date(m.created_at);
+        return mDate >= weekStart && mDate < weekEnd;
+      });
+
+      // Sum metrics
+      const volKg = weekWorkouts.reduce((sum, w) => sum + Number(w.total_volume_kg || 0), 0);
+      const durationMins = weekWorkouts.reduce((sum, w) => sum + Number(w.duration_minutes || 0), 0);
+      const reps = weekWorkouts.reduce((sum, w) => {
+        const setReps = (w.workout_log_sets || [])
+          .filter((s: any) => s.is_completed)
+          .reduce((sSum: number, s: any) => sSum + Number(s.reps || 0), 0);
+        return sum + setReps;
+      }, 0);
+
+      const daysInWeek = isCurrentWeek ? Math.max(1, now.getDay() === 0 ? 7 : now.getDay()) : 7;
+      const caloriesKcal = Math.round(weekMeals.reduce((sum, m) => sum + Number(m.total_calories || 0), 0) / daysInWeek);
+      const proteinG = Math.round(weekMeals.reduce((sum, m) => sum + Number(m.total_protein_g || 0), 0) / daysInWeek);
+
+      result.push({
+        label: isCurrentWeek ? 'This Wk' : `${monthName} ${dateNum}`,
+        fullLabel: isCurrentWeek
+          ? `This Week (${monthNames[weekStart.getMonth()]} ${weekStart.getDate()} – Today)`
+          : `Week ending ${monthName} ${dateNum}`,
+        volKg,
+        durationMins,
+        reps,
+        caloriesKcal,
+        proteinG,
+      });
+    }
+
+    return result;
+  };
 
   // Slice dataset according to time range filter
   const getFilteredData = (): AnalyticsDataPoint[] => {
@@ -102,13 +200,13 @@ export const WeeklyProfileAnalytics: React.FC = () => {
       case '1W':
         return getDynamicLast7DaysData();
       case '4W':
-        return full12WeeksData.slice(-4);
+        return getDynamicMultiWeekData(4);
       case '8W':
-        return full12WeeksData.slice(-8);
+        return getDynamicMultiWeekData(8);
       case '12W':
-        return full12WeeksData;
+        return getDynamicMultiWeekData(12);
       default:
-        return full12WeeksData.slice(-4);
+        return getDynamicMultiWeekData(4);
     }
   };
 
@@ -248,6 +346,25 @@ export const WeeklyProfileAnalytics: React.FC = () => {
     : '';
 
   const fontSizeX = timeRange === '12W' ? 7.5 : timeRange === '8W' ? 8.5 : 10;
+
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.cardContainer,
+          {
+            backgroundColor: theme.card,
+            borderColor: theme.border,
+            height: 300,
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+        ]}
+      >
+        <ActivityIndicator size="small" color={theme.isDark ? theme.accentGold : theme.primary} />
+      </View>
+    );
+  }
 
   return (
     <View
@@ -605,8 +722,8 @@ export const WeeklyProfileAnalytics: React.FC = () => {
                     {filter === 'VOLUME'
                       ? 'Volume (kg)'
                       : filter === 'DURATION'
-                      ? 'Duration (min)'
-                      : 'Total Reps'}
+                        ? 'Duration (min)'
+                        : 'Total Reps'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -681,7 +798,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   cardTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   topRightRangeSelector: {
@@ -725,7 +842,7 @@ const styles = StyleSheet.create({
   },
   peakBadgeText: {
     color: '#FFEDD5',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   activeSelectionStats: {
@@ -743,17 +860,17 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statPillLabel: {
-    fontSize: 11,
+    fontSize: 12,
   },
   statPillValue: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   legendRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
     marginBottom: 6,
   },
   legendItem: {

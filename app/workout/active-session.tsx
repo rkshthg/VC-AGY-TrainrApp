@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   FlatList,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,10 +18,12 @@ import { useWorkoutStore, ExerciseDef } from '../../store/workoutStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
+import { formatVolume, getWeightUnitLabel } from '../../lib/units';
 
 export default function ActiveSessionScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const unitSystem = useAuthStore((state) => state.unitSystem);
   const {
     activeSession,
     exerciseCatalog,
@@ -68,13 +71,20 @@ export default function ActiveSessionScreen() {
   const handleFinishWorkout = () => {
     const header = finishSession();
     if (header) {
+      const breakdownItems = (header.exerciseLogs || []).map((log) => ({
+        title: log.name,
+        subtitle: `${log.sets} Sets • ${log.reps} | Target: ${log.targetWeightKg} kg`,
+        value: `${log.totalVolumeKg.toLocaleString()} kg`,
+      }));
+
       addLiveFeedEvent({
         clientId: profile?.id || 'usr_1',
         clientName: profile?.fullName || 'Client',
+        avatarUrl: profile?.avatarUrl,
         eventType: 'FINISH_WORKOUT',
-        timeAgo: 'Just now',
         actionVerb: 'Logged',
         targetTitle: header.title,
+        breakdownItems,
         tags: [
           { label: 'Strength', type: 'success' },
           { label: 'Completed', type: 'success' },
@@ -91,17 +101,25 @@ export default function ActiveSessionScreen() {
   };
 
   const handleCancelWorkout = () => {
-    Alert.alert('Cancel Workout Session', 'Are you sure you want to discard this active session?', [
-      { text: 'Keep Going', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => {
-          cancelSession();
-          router.replace('/(tabs)/workout');
+    if (Platform.OS === 'web') {
+      const confirmDiscard = window.confirm('Are you sure you want to discard this active session?');
+      if (confirmDiscard) {
+        cancelSession();
+        router.replace('/(tabs)/workout');
+      }
+    } else {
+      Alert.alert('Cancel Workout Session', 'Are you sure you want to discard this active session?', [
+        { text: 'Keep Going', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            cancelSession();
+            router.replace('/(tabs)/workout');
+          },
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   const exercises = activeSession?.exercises || [];
@@ -206,7 +224,7 @@ export default function ActiveSessionScreen() {
           <Text style={[styles.volumeText, { color: theme.textSecondary }]}>
             Volume:{' '}
             <Text style={[styles.volumeHighlight, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
-              {currentVolumeKg.toLocaleString()} kg
+              {formatVolume(currentVolumeKg, unitSystem)}
             </Text>
           </Text>
         </View>
@@ -281,7 +299,9 @@ export default function ActiveSessionScreen() {
               <View style={styles.setTable}>
                 <View style={styles.setTableHeader}>
                   <Text style={[styles.colHeader, { width: 24, textAlign: 'center', color: theme.textMuted }]}>SET</Text>
-                  <Text style={[styles.colHeader, { flex: 1, textAlign: 'center', color: theme.textMuted }]}>KG</Text>
+                  <Text style={[styles.colHeader, { flex: 1, textAlign: 'center', color: theme.textMuted }]}>
+                    {getWeightUnitLabel(unitSystem).toUpperCase()}
+                  </Text>
                   <Text style={[styles.colHeader, { flex: 1, textAlign: 'center', color: theme.textMuted }]}>REPS</Text>
                   <Text style={[styles.colHeader, { width: 44, textAlign: 'center', color: theme.textMuted }]}>DONE</Text>
                 </View>
@@ -333,7 +353,7 @@ export default function ActiveSessionScreen() {
                           updateSetValues(ex.exerciseId, idx, num, set.reps);
                         }}
                       />
-                      <Text style={[styles.unitTag, { color: theme.textMuted }]}>kg</Text>
+                      <Text style={[styles.unitTag, { color: theme.textMuted }]}>{getWeightUnitLabel(unitSystem)}</Text>
                     </View>
 
                     {/* REPS Input */}

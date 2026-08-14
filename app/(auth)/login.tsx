@@ -31,7 +31,12 @@ export default function LoginScreen() {
   const handleGoogleLogin = async () => {
     const success = await signInWithGoogle();
     if (success) {
-      router.replace('/(auth)/onboarding');
+      const onboarded = useAuthStore.getState().isOnboarded;
+      if (onboarded) {
+         router.replace('/(tabs)/dashboard');
+      } else {
+         router.replace('/(auth)/onboarding');
+      }
     }
   };
 

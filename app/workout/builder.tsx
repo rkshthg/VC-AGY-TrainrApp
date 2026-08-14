@@ -16,6 +16,7 @@ import { useWorkoutStore, PlanExercise } from '../../store/workoutStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
+import { getWeightUnitLabel } from '../../lib/units';
 
 interface BuilderDay {
   id: string;
@@ -28,6 +29,7 @@ export default function WorkoutBuilderScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ planId?: string; editPlanId?: string; assignPlanId?: string }>();
   const role = useAuthStore((state) => state.role);
+  const unitSystem = useAuthStore((state) => state.unitSystem);
   const clients = useTrainerStore((state) => state.clients);
   const { exerciseCatalog, savedPlans, createPlan, updatePlan } = useWorkoutStore();
   const theme = useTheme();
@@ -126,8 +128,8 @@ export default function WorkoutBuilderScreen() {
               ? `${d.dayName.split(':')[0]}: Rest & Recovery`
               : 'Rest & Recovery'
             : d.dayName.includes(':')
-            ? `${d.dayName.split(':')[0]}: Training Split`
-            : 'Training Split',
+              ? `${d.dayName.split(':')[0]}: Training Split`
+              : 'Training Split',
         };
       })
     );
@@ -577,7 +579,7 @@ export default function WorkoutBuilderScreen() {
                         </View>
 
                         <View style={styles.paramBox}>
-                          <Text style={[styles.paramLabel, { color: theme.textMuted }]}>TARGET (KG)</Text>
+                          <Text style={[styles.paramLabel, { color: theme.textMuted }]}>TARGET ({getWeightUnitLabel(unitSystem).toUpperCase()})</Text>
                           <TextInput
                             style={[
                               styles.paramInput,

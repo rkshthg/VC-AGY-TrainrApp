@@ -204,6 +204,7 @@ export default function DashboardScreen() {
                     tags={card.tags}
                     eventType={card.eventType}
                     photoUrl={card.photoUrl}
+                    breakdownItems={card.breakdownItems}
                     updatedValues={card.updatedValues}
                     onPressCard={() => router.push(`/clients/${card.clientId}`)}
                   />
