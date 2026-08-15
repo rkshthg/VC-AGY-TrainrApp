@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { HeaderBar } from '../../components/HeaderBar';
 import { SettingsDrawer } from '../../components/SettingsDrawer';
@@ -16,42 +16,88 @@ import { useTheme } from '../../lib/theme';
 export default function DashboardScreen() {
   const router = useRouter();
   const role = useAuthStore((state) => state.role);
+  const userId = useAuthStore((state) => state.profile?.id);
   const todayMeals = useNutritionStore((state) => state.todayMeals);
+  const fetchTodayMeals = useNutritionStore((state) => state.fetchTodayMeals);
   const workoutHistory = useWorkoutStore((state) => state.workoutHistory);
+  const fetchWorkoutData = useWorkoutStore((state) => state.fetchWorkoutData);
   const startSession = useWorkoutStore((state) => state.startSession);
   const liveFeedCards = useTrainerStore((state) => state.liveFeedCards);
   const clients = useTrainerStore((state) => state.clients);
+  const fetchRoster = useTrainerStore((state) => state.fetchRoster);
   const toggleAcknowledgeEvent = useTrainerStore((state) => state.toggleAcknowledgeEvent);
   const theme = useTheme();
 
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<'ACTIVE' | 'ARCHIVE'>('ACTIVE');
   const [selectedClientFilter, setSelectedClientFilter] = useState<string>('ALL');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchRoster(),
+        userId ? fetchTodayMeals(userId) : Promise.resolve(),
+        userId ? fetchWorkoutData(userId) : Promise.resolve(),
+      ]);
+    } catch (e) {
+      console.warn('Dashboard refresh error:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleStartWorkout = () => {
     startSession();
     router.push('/workout/active-session');
   };
 
-  const unacknowledgedCount = liveFeedCards.filter((card) => !card.isAcknowledged).length;
+  // Helper for 24h archive expiration
+  const isWithin24HoursOfAck = (card: any) => {
+    if (!card.isAcknowledged) return false;
+    const ackTime = card.acknowledgedAt ? new Date(card.acknowledgedAt).getTime() : new Date(card.timestamp).getTime();
+    const now = new Date().getTime();
+    const diffHours = (now - ackTime) / (1000 * 60 * 60);
+    return diffHours <= 24;
+  };
 
-  const filteredFeedCards = liveFeedCards.filter((card) => {
+  const unacknowledgedCount = liveFeedCards.filter((card) => !card.isAcknowledged).length;
+  const archiveCount = liveFeedCards.filter((card) => isWithin24HoursOfAck(card)).length;
+
+  const tabFilteredCards = liveFeedCards.filter((card) => {
+    if (activeTab === 'ACTIVE') {
+      return !card.isAcknowledged;
+    } else {
+      return isWithin24HoursOfAck(card);
+    }
+  });
+
+  const filteredFeedCards = tabFilteredCards.filter((card) => {
     if (selectedClientFilter === 'ALL') return true;
     return card.clientId === selectedClientFilter || card.clientName.toLowerCase() === selectedClientFilter.toLowerCase();
   });
 
-  // Sort: Unacknowledged (unread) updates first, then by timestamp descending
-  const sortedFeedCards = [...filteredFeedCards].sort((a, b) => {
-    const ackA = a.isAcknowledged ? 1 : 0;
-    const ackB = b.isAcknowledged ? 1 : 0;
-    if (ackA !== ackB) return ackA - ackB;
-    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-  });
+  const sortedFeedCards = [...filteredFeedCards].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.isDark ? theme.accentGold : theme.primary}
+            colors={[theme.isDark ? theme.accentGold : theme.primary]}
+          />
+        }
+      >
         {/* Today's Nutrition Progress */}
         <NutritionChart />
 
@@ -60,20 +106,66 @@ export default function DashboardScreen() {
           <View style={styles.activityFeedContainer}>
             <View style={styles.feedHeaderRow}>
               <Text style={[styles.clientActivityHeaderTitle, { color: theme.text }]}>Client Activity</Text>
-              <Text
-                style={[
-                  styles.feedCountBadge,
-                  {
-                    color: theme.isDark ? theme.accentGold : theme.primary,
-                    backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
-                    borderColor: theme.isDark ? theme.accentGold : theme.primary,
-                  },
-                ]}
-              >
-                {unacknowledgedCount === 0
-                  ? 'All Acknowledged'
-                  : `${unacknowledgedCount} ${unacknowledgedCount === 1 ? 'update' : 'updates'}`}
-              </Text>
+
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                {/* Active Updates Tab Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.feedCountBadge,
+                    {
+                      backgroundColor: activeTab === 'ACTIVE'
+                        ? theme.isDark ? theme.accentGold : theme.primary
+                        : theme.isDark ? theme.badgeBg : '#E8F5E9',
+                      borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                    },
+                  ]}
+                  onPress={() => setActiveTab('ACTIVE')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      color: activeTab === 'ACTIVE'
+                        ? theme.isDark ? '#0A1A12' : '#FFFFFF'
+                        : theme.isDark ? theme.accentGold : theme.primary,
+                    }}
+                  >
+                    {unacknowledgedCount === 0
+                      ? '0 Updates'
+                      : `${unacknowledgedCount} ${unacknowledgedCount === 1 ? 'update' : 'updates'}`}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Archive Tab Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.feedCountBadge,
+                    {
+                      backgroundColor: activeTab === 'ARCHIVE'
+                        ? theme.isDark ? theme.accentGold : theme.primary
+                        : theme.cardAlt,
+                      borderColor: activeTab === 'ARCHIVE'
+                        ? theme.isDark ? theme.accentGold : theme.primary
+                        : theme.border,
+                    },
+                  ]}
+                  onPress={() => setActiveTab('ARCHIVE')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      color: activeTab === 'ARCHIVE'
+                        ? theme.isDark ? '#0A1A12' : '#FFFFFF'
+                        : theme.textSecondary,
+                    }}
+                  >
+                    Archive ({archiveCount})
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={[styles.clientActivityHeaderDivider, { backgroundColor: theme.border }]} />
@@ -120,7 +212,7 @@ export default function DashboardScreen() {
                     },
                   ]}
                 >
-                  All Clients ({liveFeedCards.length})
+                  All Clients ({tabFilteredCards.length})
                 </Text>
               </TouchableOpacity>
 
@@ -128,7 +220,7 @@ export default function DashboardScreen() {
                 const isActive =
                   selectedClientFilter === client.clientId ||
                   selectedClientFilter.toLowerCase() === client.fullName.toLowerCase();
-                const count = liveFeedCards.filter(
+                const count = tabFilteredCards.filter(
                   (card) =>
                     card.clientId === client.clientId ||
                     card.clientName.toLowerCase() === client.fullName.toLowerCase()
@@ -185,7 +277,9 @@ export default function DashboardScreen() {
                   ]}
                 >
                   <Text style={[styles.emptyFeedText, { color: theme.textMuted }]}>
-                    No recent activity logs for this client.
+                    {activeTab === 'ACTIVE'
+                      ? 'No new activity updates. All caught up!'
+                      : 'No archived activity logs in the past 24 hours.'}
                   </Text>
                 </View>
               ) : (

@@ -11,6 +11,8 @@ export interface UserProfile {
   role: 'CLIENT' | 'TRAINER';
   trainerCode?: string;
   linkedTrainerId?: string;
+  linkedTrainerName?: string;
+  linkedTrainerCode?: string;
   heightCm?: number;
   weightKg?: number;
   dob?: string;
@@ -52,8 +54,8 @@ interface AuthState {
   setIsAuthLoading: (loading: boolean) => void;
   setProfile: (profile: UserProfile) => void;
   setRole: (role: 'CLIENT' | 'TRAINER') => void;
-  setThemeMode: (mode: 'LIGHT' | 'DARK' | 'SYSTEM') => void;
-  setUnitSystem: (system: 'METRIC' | 'IMPERIAL') => void;
+  setThemeMode: (mode: 'LIGHT' | 'DARK' | 'SYSTEM') => Promise<void>;
+  setUnitSystem: (system: 'METRIC' | 'IMPERIAL') => Promise<void>;
   generateTrainerCode: () => string;
   linkTrainer: (code: string) => Promise<boolean>;
   unlinkTrainer: () => Promise<boolean>;
@@ -61,10 +63,15 @@ interface AuthState {
   signInWithGoogle: () => Promise<boolean>;
   logout: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<boolean>;
+  updateAvatarUrl: (url?: string) => Promise<boolean>;
 }
 
 // Mapper to map database snake_case to frontend camelCase
 function mapDbToProfile(dbUser: any): UserProfile {
+  const trainerData = Array.isArray(dbUser.linked_trainer)
+    ? dbUser.linked_trainer[0]
+    : dbUser.linked_trainer;
+
   return {
     id: dbUser.id,
     email: dbUser.email,
@@ -73,6 +80,8 @@ function mapDbToProfile(dbUser: any): UserProfile {
     role: dbUser.role as 'CLIENT' | 'TRAINER',
     trainerCode: dbUser.trainer_code,
     linkedTrainerId: dbUser.linked_trainer_id,
+    linkedTrainerName: trainerData?.full_name,
+    linkedTrainerCode: trainerData?.trainer_code,
     heightCm: dbUser.height_cm,
     weightKg: dbUser.weight_kg,
     dob: dbUser.dob,
@@ -154,8 +163,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       unitSystem: profile.unitSystem || 'METRIC',
     }),
   setRole: (role) => set({ role }),
-  setThemeMode: (themeMode) => set({ themeMode }),
-  setUnitSystem: (unitSystem) => set({ unitSystem }),
+  setThemeMode: async (themeMode) => {
+    set({ themeMode });
+    try {
+      const currentProfile = get().profile;
+      if (currentProfile) {
+        supabase.from('users').update({ theme_mode: themeMode }).eq('id', currentProfile.id).then();
+        const updatedProfile = { ...currentProfile, themeMode };
+        set({ profile: updatedProfile });
+        await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+      } else {
+        await AsyncStorage.setItem('@trainr_theme_mode', themeMode);
+      }
+    } catch (e) {
+      console.warn('Failed to save theme mode:', e);
+    }
+  },
+
+  setUnitSystem: async (unitSystem) => {
+    set({ unitSystem });
+    try {
+      const currentProfile = get().profile;
+      if (currentProfile) {
+        supabase.from('users').update({ unit_system: unitSystem }).eq('id', currentProfile.id).then();
+        const updatedProfile = { ...currentProfile, unitSystem };
+        set({ profile: updatedProfile });
+        await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+      } else {
+        await AsyncStorage.setItem('@trainr_unit_system', unitSystem);
+      }
+    } catch (e) {
+      console.warn('Failed to save unit system:', e);
+    }
+  },
 
   generateTrainerCode: () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -169,7 +209,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   fetchProfile: async (userId: string) => {
     try {
       set({ isLoading: true });
-      let { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
+      let { data, error } = await supabase
+        .from('users')
+        .select(`
+           *,
+           linked_trainer:linked_trainer_id(full_name, trainer_code)
+        `)
+        .eq('id', userId)
+        .single();
       
       if (error && error.code === 'PGRST116') {
          // User not found in trainr.users. Create an empty shell so onboarding can UPDATE it.
@@ -227,7 +274,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const cleanedCode = code.trim().toUpperCase();
       const { data: trainer, error: trainerError } = await supabase
         .from('users')
-        .select('id, full_name')
+        .select('id, full_name, trainer_code')
         .eq('trainer_code', cleanedCode)
         .eq('role', 'TRAINER')
         .single();
@@ -262,7 +309,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return false;
       }
 
-      const updatedProfile = { ...currentProfile, linkedTrainerId: trainer.id };
+      const updatedProfile = { 
+        ...currentProfile, 
+        linkedTrainerId: trainer.id,
+        linkedTrainerName: trainer.full_name,
+        linkedTrainerCode: trainer.trainer_code || cleanedCode
+      };
       get().setProfile(updatedProfile as UserProfile);
       await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
 
@@ -301,7 +353,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return false;
       }
 
-      const updatedProfile = { ...currentProfile, linkedTrainerId: undefined };
+      const updatedProfile = { 
+        ...currentProfile, 
+        linkedTrainerId: undefined,
+        linkedTrainerName: undefined,
+        linkedTrainerCode: undefined
+      };
       get().setProfile(updatedProfile as UserProfile);
       await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
       
@@ -534,5 +591,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       linkedTrainerId: null,
       isOnboarded: false,
     });
+  },
+
+  updateAvatarUrl: async (url?: string) => {
+    try {
+      const currentProfile = get().profile;
+      if (!currentProfile) return false;
+
+      const { error } = await supabase
+        .from('users')
+        .update({ avatar_url: url })
+        .eq('id', currentProfile.id);
+
+      if (error) {
+        console.warn('Failed to update avatar url in Supabase:', error.message);
+        showAlert('Update Error', error.message);
+        return false;
+      }
+
+      const updatedProfile = { ...currentProfile, avatarUrl: url };
+      get().setProfile(updatedProfile as UserProfile);
+      await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+      return true;
+    } catch (e) {
+      console.error('Failed to update avatar url:', e);
+      return false;
+    }
   },
 }));

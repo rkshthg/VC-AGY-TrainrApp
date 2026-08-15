@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,12 +22,29 @@ import { useTheme } from '../../lib/theme';
 
 export default function NutritionScreen() {
   const router = useRouter();
-  const { todayMeals, deleteMealEntry, saveMealEntry } = useNutritionStore();
+  const { todayMeals, deleteMealEntry, saveMealEntry, fetchTodayMeals, fetchAllMeals } = useNutritionStore();
   const profile = useAuthStore((state) => state.profile);
   const theme = useTheme();
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [expandedHistoryDays, setExpandedHistoryDays] = useState<Record<string, boolean>>({});
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (profile?.id) {
+        await Promise.all([
+          fetchTodayMeals(profile.id),
+          fetchAllMeals ? fetchAllMeals(profile.id) : Promise.resolve(),
+        ]);
+      }
+    } catch (e) {
+      console.warn('Nutrition refresh error:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const toggleHistoryDay = (dateLabel: string) => {
     setExpandedHistoryDays((prev) => ({
@@ -129,7 +147,18 @@ export default function NutritionScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.isDark ? theme.accentGold : theme.primary}
+            colors={[theme.isDark ? theme.accentGold : theme.primary]}
+          />
+        }
+      >
         {/* HERO MACRO TRACKER CARD (Matches Dashboard Tab 1:1) */}
         <NutritionChart />
 

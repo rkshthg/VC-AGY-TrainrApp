@@ -30,6 +30,7 @@ export interface LiveFeedEventCard {
   targetTitle: string;
   isAlert?: boolean;
   isAcknowledged?: boolean;
+  acknowledgedAt?: string;
   tags: TagPill[];
   eventType: 'LOG_MEAL' | 'FINISH_WORKOUT' | 'UPLOAD_CHECKIN' | 'UPDATE_MEASUREMENTS' | 'MISSED_WORKOUT';
   timestamp: string;
@@ -78,31 +79,75 @@ export const useTrainerStore = create<TrainerState>((set, get) => ({
         return;
       }
 
-      // Fetch active clients
-      const { data: clientsData, error } = await supabase
-        .from('trainer_clients')
-        .select(`
-           client_id,
-           users!trainer_clients_client_id_fkey(full_name, email, avatar_url, updated_at),
-           macro_targets:macro_targets!user_id(calories, protein_g, carbs_g, fat_g)
-        `)
-        .eq('trainer_id', trainerId)
-        .eq('status', 'ACTIVE');
-      
-      const parsedClients: ClientSummaryCard[] = (clientsData || []).map((c: any) => ({
-         clientId: c.client_id,
-         fullName: c.users?.full_name || 'Unknown',
-         email: c.users?.email || '',
-         avatarUrl: c.users?.avatar_url,
-         status: 'ON_TRACK',
-         lastActive: c.users?.updated_at || new Date().toISOString(),
-         todayCaloriesLogged: 0, // Need aggregation queries for this later
-         targetCalories: c.macro_targets?.[0]?.calories || 2500,
-         targetProtein: c.macro_targets?.[0]?.protein_g,
-         targetCarbs: c.macro_targets?.[0]?.carbs_g,
-         targetFat: c.macro_targets?.[0]?.fat_g,
-         todayWorkoutDone: false
-      }));
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const startOfDayISO = startOfDay.toISOString();
+
+      // Fetch active clients, plan assignments, today's meals, and today's workouts
+      const [clientsRes, assignmentsRes, mealsRes, workoutsRes] = await Promise.all([
+        supabase
+          .from('trainer_clients')
+          .select(`
+             client_id,
+             users!trainer_clients_client_id_fkey(
+                full_name, 
+                email, 
+                avatar_url, 
+                updated_at,
+                macro_targets:macro_targets!user_id(calories, protein_g, carbs_g, fat_g)
+             )
+          `)
+          .eq('trainer_id', trainerId)
+          .eq('status', 'ACTIVE'),
+        supabase
+          .from('workout_plan_assignments')
+          .select('client_id, workout_plans(title)')
+          .eq('trainer_id', trainerId),
+        supabase
+          .from('meals')
+          .select('user_id, total_calories')
+          .gte('created_at', startOfDayISO),
+        supabase
+          .from('workout_logs')
+          .select('user_id')
+          .gte('created_at', startOfDayISO),
+      ]);
+
+      const clientIdsWithWorkouts = new Set((workoutsRes.data || []).map((w: any) => w.user_id));
+      const caloriesByClient: Record<string, number> = {};
+      (mealsRes.data || []).forEach((m: any) => {
+        caloriesByClient[m.user_id] = (caloriesByClient[m.user_id] || 0) + Number(m.total_calories || 0);
+      });
+
+      const planByClient: Record<string, string> = {};
+      (assignmentsRes.data || []).forEach((a: any) => {
+        if (a.workout_plans?.title) {
+          planByClient[a.client_id] = a.workout_plans.title;
+        }
+      });
+
+      const parsedClients: ClientSummaryCard[] = (clientsRes.data || []).map((c: any) => {
+        const cId = c.client_id;
+        const loggedCals = caloriesByClient[cId] || 0;
+        const workoutDone = clientIdsWithWorkouts.has(cId);
+        const targetCals = c.users?.macro_targets?.[0]?.calories || 2500;
+
+        return {
+          clientId: cId,
+          fullName: c.users?.full_name || 'Unknown',
+          email: c.users?.email || '',
+          avatarUrl: c.users?.avatar_url,
+          currentPlanTitle: planByClient[cId] || 'No Active Plan',
+          status: (workoutDone || loggedCals > 0) ? 'ON_TRACK' : 'NEEDS_ATTENTION',
+          lastActive: c.users?.updated_at || new Date().toISOString(),
+          todayCaloriesLogged: loggedCals,
+          targetCalories: targetCals,
+          targetProtein: c.users?.macro_targets?.[0]?.protein_g || 75,
+          targetCarbs: c.users?.macro_targets?.[0]?.carbs_g || 250,
+          targetFat: c.users?.macro_targets?.[0]?.fat_g || 65,
+          todayWorkoutDone: workoutDone,
+        };
+      });
 
       // Fetch live feed
       const { data: feedData } = await supabase
@@ -124,6 +169,7 @@ export const useTrainerStore = create<TrainerState>((set, get) => ({
             targetTitle: f.target_title,
             isAlert: f.is_alert,
             isAcknowledged: f.is_acknowledged,
+            acknowledgedAt: f.acknowledged_at || (f.is_acknowledged ? f.created_at : undefined),
             tags: [],
             eventType: f.event_type as any,
             timestamp: f.created_at,
@@ -179,16 +225,29 @@ export const useTrainerStore = create<TrainerState>((set, get) => ({
   },
 
   toggleAcknowledgeEvent: async (eventId: string) => {
+    const nowISO = new Date().toISOString();
     set((state) => ({
-      liveFeedCards: state.liveFeedCards.map((card) =>
-        card.id === eventId ? { ...card, isAcknowledged: !card.isAcknowledged } : card
-      ),
+      liveFeedCards: state.liveFeedCards.map((card) => {
+        if (card.id !== eventId) return card;
+        const nextAck = !card.isAcknowledged;
+        return {
+          ...card,
+          isAcknowledged: nextAck,
+          acknowledgedAt: nextAck ? nowISO : undefined,
+        };
+      }),
     }));
     
-    // Optimistic, no offline queue needed just for acks
-    const current = get().liveFeedCards.find(c => c.id === eventId);
+    const current = get().liveFeedCards.find((c) => c.id === eventId);
     if (current && !eventId.startsWith('feed_')) {
-       supabase.from('trainer_feed_events').update({ is_acknowledged: current.isAcknowledged }).eq('id', eventId).then();
+       supabase
+         .from('trainer_feed_events')
+         .update({
+           is_acknowledged: current.isAcknowledged,
+           acknowledged_at: current.isAcknowledged ? nowISO : null,
+         })
+         .eq('id', eventId)
+         .then();
     }
   },
 

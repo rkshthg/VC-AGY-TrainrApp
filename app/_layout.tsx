@@ -71,6 +71,21 @@ export default function RootLayout() {
     });
 
     const initAuth = async () => {
+      // Load cached profile immediately to prevent default state flashes
+      try {
+        const cached = await AsyncStorage.getItem('@trainr_profile');
+        if (cached) {
+          useAuthStore.getState().setProfile(JSON.parse(cached));
+        } else {
+          const savedTheme = await AsyncStorage.getItem('@trainr_theme_mode');
+          if (savedTheme) await useAuthStore.getState().setThemeMode(savedTheme as any);
+          const savedUnits = await AsyncStorage.getItem('@trainr_unit_system');
+          if (savedUnits) await useAuthStore.getState().setUnitSystem(savedUnits as any);
+        }
+      } catch (e) {
+        console.warn('Failed to restore cached profile:', e);
+      }
+
       const { data: { session: initialSession } } = await supabase.auth.getSession();
       if (initialSession) {
         // getUser() validates the token against the backend to verify it hasn't been deleted or invalidated
@@ -109,15 +124,16 @@ export default function RootLayout() {
     const authStore = useAuthStore.getState();
     await authStore.fetchProfile(userId);
     
-    // Only fetch other stores once profile is loaded
     const profile = useAuthStore.getState().profile;
     if (profile) {
-      if (profile.role === 'CLIENT') {
-         useProgressStore.getState().fetchProgressData(userId);
-         useWorkoutStore.getState().fetchWorkoutData(userId);
-         const today = new Date().toISOString().split('T')[0];
-         useNutritionStore.getState().fetchNutritionData(userId, today);
-      } else if (profile.role === 'TRAINER') {
+      // Fetch personal fitness stores for ALL accounts (both CLIENT and TRAINER)
+      useProgressStore.getState().fetchProgressData(userId);
+      useWorkoutStore.getState().fetchWorkoutData(userId);
+      const today = new Date().toISOString().split('T')[0];
+      useNutritionStore.getState().fetchNutritionData(userId, today);
+
+      // If user is a Trainer, additionally fetch their client roster
+      if (profile.role === 'TRAINER') {
          useTrainerStore.getState().fetchRoster();
       }
     }

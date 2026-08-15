@@ -21,6 +21,8 @@ export interface CalculatedHealthMetrics {
   tdeeKcal: number;
 }
 
+const round1 = (val: number) => Math.round(val * 10) / 10;
+
 /**
  * Calculates BMI (Body Mass Index)
  */
@@ -29,7 +31,7 @@ export function calculateBMI(heightCm: number, weightKg: number): { bmi: number;
     return { bmi: 0, category: 'Unknown' };
   }
   const heightM = heightCm / 100;
-  const bmi = parseFloat((weightKg / (heightM * heightM)).toFixed(1));
+  const bmi = round1(weightKg / (heightM * heightM));
 
   let category = 'Normal';
   if (bmi < 18.5) category = 'Underweight';
@@ -55,13 +57,13 @@ export function calculateNavyBodyFatPct(stats: BodyStats): number | null {
     const diff = waistCm + hipsCm - neckCm;
     if (diff <= 0) return null;
     const bodyFat = 163.205 * log10(diff) - 97.684 * log10(heightCm) - 78.387;
-    return parseFloat(Math.max(3, Math.min(60, bodyFat)).toFixed(1));
+    return round1(Math.max(3, Math.min(60, bodyFat)));
   } else {
     // Default to Male formula
     const diff = waistCm - neckCm;
     if (diff <= 0) return null;
     const bodyFat = 86.010 * log10(diff) - 70.041 * log10(heightCm) + 36.76;
-    return parseFloat(Math.max(3, Math.min(60, bodyFat)).toFixed(1));
+    return round1(Math.max(3, Math.min(60, bodyFat)));
   }
 }
 
@@ -79,7 +81,7 @@ export function calculateBMR(stats: BodyStats): number {
     bmr += 5;
   }
 
-  return Math.round(bmr);
+  return round1(bmr);
 }
 
 /**
@@ -96,7 +98,7 @@ export function calculateTDEE(stats: BodyStats): number {
   };
 
   const mult = multipliers[stats.activityLevel || 'MODERATELY_ACTIVE'] || 1.55;
-  return Math.round(bmr * mult);
+  return round1(bmr * mult);
 }
 
 /**
@@ -104,9 +106,9 @@ export function calculateTDEE(stats: BodyStats): number {
  */
 export function calculate1RM(weightKg: number, reps: number): number {
   if (reps <= 0) return 0;
-  if (reps === 1) return weightKg;
+  if (reps === 1) return round1(weightKg);
   const oneRM = weightKg * (1 + reps / 30);
-  return parseFloat(oneRM.toFixed(1));
+  return round1(oneRM);
 }
 
 /**

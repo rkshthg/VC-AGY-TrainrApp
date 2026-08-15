@@ -10,12 +10,14 @@ export default function AssignModalScreen() {
   const router = useRouter();
   const { planId } = useLocalSearchParams();
   const clients = useTrainerStore((state) => state.clients);
-  const savedPlans = useWorkoutStore((state) => state.savedPlans);
+  const { savedPlans, updatePlan } = useWorkoutStore();
   const theme = useTheme();
 
   const targetPlan = savedPlans.find((p) => p.id === planId) || savedPlans[0];
 
-  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+  const [selectedClientIds, setSelectedClientIds] = useState<string[]>(
+    targetPlan?.assignedClientIds || []
+  );
 
   const toggleClient = (id: string) => {
     if (selectedClientIds.includes(id)) {
@@ -26,15 +28,26 @@ export default function AssignModalScreen() {
   };
 
   const handleConfirmAssignment = () => {
-    if (selectedClientIds.length === 0) {
-      Alert.alert('No Clients Selected', 'Please select at least one client to assign this workout plan to.');
-      return;
+    const isUnassigning = selectedClientIds.length === 0;
+
+    if (targetPlan) {
+      updatePlan(targetPlan.id, {
+        assignedClientIds: selectedClientIds,
+        isAssignedToClient: !isUnassigning,
+      });
     }
 
-    Alert.alert(
-      'Plan Assigned',
-      `Successfully assigned "${targetPlan?.title || 'Workout Plan'}" to ${selectedClientIds.length} client(s)!`
-    );
+    if (isUnassigning) {
+      Alert.alert(
+        'Assignment Cleared',
+        `Removed client assignments for "${targetPlan?.title || 'Workout Plan'}". Routine is now under Self.`
+      );
+    } else {
+      Alert.alert(
+        'Plan Assigned',
+        `Successfully assigned "${targetPlan?.title || 'Workout Plan'}" to ${selectedClientIds.length} client(s)!`
+      );
+    }
     router.back();
   };
 

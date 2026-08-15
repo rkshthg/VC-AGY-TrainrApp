@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CompletedWorkoutHeader } from '../store/workoutStore';
 import { useAuthStore } from '../store/authStore';
-import { formatVolume } from '../lib/units';
+import { formatVolume, formatWeight } from '../lib/units';
 import { useTheme } from '../lib/theme';
 
 export interface LoggedWorkoutCardProps {
@@ -43,11 +43,14 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
     return 'flash-outline';
   };
 
-  const exerciseLogs = session.exerciseLogs || [
-    { name: 'Barbell Bench Press', sets: 4, reps: '8-10 reps', targetWeightKg: 75, totalVolumeKg: 1800 },
-    { name: 'Seated DB Shoulder Press', sets: 3, reps: '10-12 reps', targetWeightKg: 20, totalVolumeKg: 950 },
-    { name: 'Tricep Rope Pushdown', sets: 3, reps: '12-15 reps', targetWeightKg: 25, totalVolumeKg: 800 },
-  ];
+  const exerciseLogs =
+    session.exerciseLogs && session.exerciseLogs.length > 0
+      ? session.exerciseLogs
+      : [
+          { name: 'Barbell Bench Press', sets: 4, reps: '8-10 reps', targetWeightKg: 75, totalVolumeKg: 1800 },
+          { name: 'Seated DB Shoulder Press', sets: 3, reps: '10-12 reps', targetWeightKg: 20, totalVolumeKg: 950 },
+          { name: 'Tricep Rope Pushdown', sets: 3, reps: '12-15 reps', targetWeightKg: 25, totalVolumeKg: 800 },
+        ];
 
   const iconName = getSessionIconName(session.title);
 
@@ -163,13 +166,13 @@ export const LoggedWorkoutCard: React.FC<LoggedWorkoutCardProps> = ({
                       { color: theme.isDark ? theme.accentGold : theme.primary },
                     ]}
                   >
-                    {item.totalVolumeKg || 1200} <Text style={styles.volumeSubUnit}>kg</Text>
+                    {formatVolume(item.totalVolumeKg || 1200, unitSystem)}
                   </Text>
                 </View>
 
                 <Text style={[styles.itemBottomRow, { color: theme.textSecondary }]}>
                   {item.sets} sets <Text style={{ color: theme.accentGold }}>•</Text> {item.reps}{' '}
-                  <Text style={{ color: theme.border }}>|</Text> @ {item.targetWeightKg || 60} kg
+                  <Text style={{ color: theme.border }}>|</Text> @ {formatWeight(item.targetWeightKg || 60, unitSystem)}
                 </Text>
               </View>
             ))}

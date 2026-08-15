@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Platform, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { HeaderBar } from '../../components/HeaderBar';
@@ -7,23 +7,49 @@ import { SettingsDrawer } from '../../components/SettingsDrawer';
 import { LoggedWorkoutCard } from '../../components/LoggedWorkoutCard';
 import { useWorkoutStore, WorkoutPlan } from '../../store/workoutStore';
 import { useAuthStore } from '../../store/authStore';
+import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
 
 export default function WorkoutScreen() {
   const router = useRouter();
   const role = useAuthStore((state) => state.role);
+  const profile = useAuthStore((state) => state.profile);
+  const clients = useTrainerStore((state) => state.clients);
   const theme = useTheme();
   const {
     savedPlans,
     activePlanId,
     activeRoutineDayIndexMap,
     workoutHistory,
+    fetchWorkoutData,
     setActivePlan,
     setActiveRoutineDayIndex,
     startSession,
     deletePlan,
     createPlan,
   } = useWorkoutStore();
+
+  const [selectedClientFilter, setSelectedClientFilter] = useState<string>('SELF');
+  const [refreshing, setRefreshing] = useState(false);
+
+  React.useEffect(() => {
+    if (profile?.id) {
+      fetchWorkoutData(profile.id);
+    }
+  }, [profile?.id]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (profile?.id) {
+        await fetchWorkoutData(profile.id);
+      }
+    } catch (e) {
+      console.warn('Workout refresh error:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [expandedRoutineIds, setExpandedRoutineIds] = useState<Record<string, boolean>>({});
@@ -72,8 +98,29 @@ export default function WorkoutScreen() {
     }
   };
 
-  // Active routine based on activePlanId state
-  const activePlan = savedPlans.find((p) => p.id === activePlanId) || savedPlans[0];
+  // Active routine based on activePlanId state & user role
+  const activePlan = (() => {
+    if (activePlanId) {
+      const found = savedPlans.find((p) => p.id === activePlanId);
+      if (found) {
+        const isAssigned = found.isAssignedToClient || (found.assignedClientIds && found.assignedClientIds.length > 0);
+        if (role === 'TRAINER' && isAssigned) {
+          return null; // Assigned routines cannot be active for Trainer
+        }
+        return found;
+      }
+    }
+    if (role === 'TRAINER') {
+      // For trainer, only show an active routine if activePlanId was explicitly set
+      return null;
+    } else {
+      // For client, prioritize routine assigned by trainer
+      const assigned = savedPlans.find(
+        (p) => p.isAssignedToClient || (p.assignedClientIds && p.assignedClientIds.length > 0)
+      );
+      return assigned || savedPlans[0] || null;
+    }
+  })();
 
   // Current active day index and next workout day for routine
   const activeDayIndex = activePlan ? activeRoutineDayIndexMap[activePlan.id] || 0 : 0;
@@ -82,13 +129,18 @@ export default function WorkoutScreen() {
       ? activePlan.days[activeDayIndex % activePlan.days.length]
       : null;
 
-  // Filter saved routines based on assignment:
+  // Filter saved routines based on assignment, role & client filter:
   const displayedSavedPlans = savedPlans.filter((plan) => {
-    const isAssigned = plan.assignedClientIds && plan.assignedClientIds.length > 0;
     if (role === 'TRAINER') {
-      return !isAssigned;
+      if (selectedClientFilter === 'SELF') {
+        return !plan.isAssignedToClient && (!plan.assignedClientIds || plan.assignedClientIds.length === 0);
+      } else {
+        return plan.assignedClientIds?.includes(selectedClientFilter);
+      }
     } else {
-      return isAssigned || !plan.createdBy || plan.createdBy === 'usr_1';
+      const isAssigned = plan.isAssignedToClient || (plan.assignedClientIds && plan.assignedClientIds.length > 0);
+      const isClientCreated = !plan.createdBy || plan.createdBy === 'CLIENT' || plan.createdBy === 'usr_1';
+      return isAssigned || isClientCreated;
     }
   });
 
@@ -179,7 +231,18 @@ export default function WorkoutScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.isDark ? theme.accentGold : theme.primary}
+            colors={[theme.isDark ? theme.accentGold : theme.primary]}
+          />
+        }
+      >
         {/* SECTION 1: KPI Quick Stats Bar */}
         <View
           style={[
@@ -412,6 +475,83 @@ export default function WorkoutScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Trainer Exclusive: Filter by Self / Client Bar */}
+          {role === 'TRAINER' && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginVertical: 12 }}
+              contentContainerStyle={{ gap: 8, paddingRight: 10 }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.filterChipPill,
+                  {
+                    backgroundColor: selectedClientFilter === 'SELF'
+                      ? (theme.isDark ? theme.accentGold : theme.primary)
+                      : theme.cardInner,
+                    borderColor: selectedClientFilter === 'SELF'
+                      ? (theme.isDark ? theme.accentGold : theme.primary)
+                      : theme.border,
+                  },
+                ]}
+                onPress={() => setSelectedClientFilter('SELF')}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    {
+                      color: selectedClientFilter === 'SELF'
+                        ? (theme.isDark ? '#0A1A12' : '#FFFFFF')
+                        : theme.textSecondary,
+                      fontWeight: selectedClientFilter === 'SELF' ? 'bold' : '600',
+                    },
+                  ]}
+                >
+                  Self ({savedPlans.filter(p => !p.isAssignedToClient && (!p.assignedClientIds || p.assignedClientIds.length === 0)).length})
+                </Text>
+              </TouchableOpacity>
+
+              {clients.map((c) => {
+                const count = savedPlans.filter((p) => p.assignedClientIds?.includes(c.clientId)).length;
+                const isSelected = selectedClientFilter === c.clientId;
+                return (
+                  <TouchableOpacity
+                    key={c.clientId}
+                    style={[
+                      styles.filterChipPill,
+                      {
+                        backgroundColor: isSelected
+                          ? (theme.isDark ? theme.accentGold : theme.primary)
+                          : theme.cardInner,
+                        borderColor: isSelected
+                          ? (theme.isDark ? theme.accentGold : theme.primary)
+                          : theme.border,
+                      },
+                    ]}
+                    onPress={() => setSelectedClientFilter(c.clientId)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        {
+                          color: isSelected
+                            ? (theme.isDark ? '#0A1A12' : '#FFFFFF')
+                            : theme.textSecondary,
+                          fontWeight: isSelected ? 'bold' : '600',
+                        },
+                      ]}
+                    >
+                      {c.fullName} ({count})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
           {displayedSavedPlans.length === 0 ? (
             <View
               style={[
@@ -420,7 +560,9 @@ export default function WorkoutScreen() {
               ]}
             >
               <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-                No saved workout routines found. Tap "+ Build Routine" to create one!
+                {selectedClientFilter === 'SELF'
+                  ? 'No personal workout routines created yet. Tap "+ Build Routine" to create your personal routine!'
+                  : 'No routines assigned to this client yet.'}
               </Text>
             </View>
           ) : (
@@ -488,7 +630,7 @@ export default function WorkoutScreen() {
                                 { color: theme.isDark ? theme.accentGold : theme.primary },
                               ]}
                             >
-                              Assigned
+                              {role === 'TRAINER' ? 'Assigned to Client' : 'Assigned by Trainer'}
                             </Text>
                           </View>
                         )}
@@ -497,6 +639,39 @@ export default function WorkoutScreen() {
                       <Text style={[styles.routineDaysSubtitle, { color: theme.textSecondary }]}>
                         {plan.days.length} Days / Wk • {totalExercisesCount} Exercises
                       </Text>
+
+                      {/* Trainer View: Assigned Clients List Pills */}
+                      {role === 'TRAINER' && plan.assignedClientIds && plan.assignedClientIds.length > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                          <Text style={{ fontSize: 11, color: theme.textMuted, fontWeight: '600' }}>Assigned to:</Text>
+                          {plan.assignedClientIds.map((cId) => {
+                            const assignedClient = clients.find((c) => c.clientId === cId);
+                            return (
+                              <View
+                                key={cId}
+                                style={{
+                                  backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                                  borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                                  borderWidth: 1,
+                                  borderRadius: 12,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 2,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 10.5,
+                                    fontWeight: 'bold',
+                                    color: theme.isDark ? theme.accentGold : theme.primary,
+                                  }}
+                                >
+                                  {assignedClient?.fullName || 'Client'}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
                     </View>
 
                     {/* 3-Dot Overflow Menu Button */}
@@ -612,7 +787,29 @@ export default function WorkoutScreen() {
 
                   {/* Full-Width Active Action Button */}
                   <View style={styles.routineActionBarSingle}>
-                    {!isActiveRoutine ? (
+                    {role === 'TRAINER' && isAssigned ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.setActiveFullBtn,
+                          {
+                            backgroundColor: theme.cardAlt,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                        onPress={() => {
+                          setMenuOpenPlanId(null);
+                          router.push({
+                            pathname: '/workout/assign-modal',
+                            params: { planId: plan.id },
+                          });
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.setActiveFullBtnText, { color: theme.textSecondary }]}>
+                          Manage Client Assignment
+                        </Text>
+                      </TouchableOpacity>
+                    ) : !isActiveRoutine ? (
                       <TouchableOpacity
                         style={[
                           styles.setActiveFullBtn,
@@ -913,6 +1110,15 @@ const styles = StyleSheet.create({
   buildRoutineBtnText: {
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  filterChipPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 12,
   },
   emptyContainer: {
     borderRadius: 14,

@@ -167,22 +167,24 @@ export async function analyzeMealImage(
             const cleanedText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
             const rawParsed = JSON.parse(cleanedText);
 
+            const round1 = (val: number) => Math.round(val * 10) / 10;
+
             // Map snake_case response fields to camelCase properties expected by the frontend
             const parsedResult: AIMealScanResult = {
               dishName: rawParsed.dish_name || 'South Asian Meal Plate',
-              confidenceScore: rawParsed.confidence_score ?? 0.85,
+              confidenceScore: round1(rawParsed.confidence_score ?? 0.85),
               identifiedItems: (rawParsed.identified_items || []).map((item: any) => ({
                 name: item.name || '',
                 quantity: item.quantity || '',
-                calories: item.calories ?? 0,
-                proteinG: item.protein_g ?? 0,
-                carbsG: item.carbs_g ?? 0,
-                fatG: item.fat_g ?? 0,
+                calories: round1(item.calories ?? 0),
+                proteinG: round1(item.protein_g ?? 0),
+                carbsG: round1(item.carbs_g ?? 0),
+                fatG: round1(item.fat_g ?? 0),
               })),
-              totalCalories: rawParsed.total_calories ?? 0,
-              totalProteinG: rawParsed.total_protein_g ?? 0,
-              totalCarbsG: rawParsed.total_carbs_g ?? 0,
-              totalFatG: rawParsed.total_fat_g ?? 0,
+              totalCalories: round1(rawParsed.total_calories ?? 0),
+              totalProteinG: round1(rawParsed.total_protein_g ?? 0),
+              totalCarbsG: round1(rawParsed.total_carbs_g ?? 0),
+              totalFatG: round1(rawParsed.total_fat_g ?? 0),
               notes: rawParsed.notes || '',
             };
 

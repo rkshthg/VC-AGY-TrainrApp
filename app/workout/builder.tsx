@@ -95,6 +95,11 @@ export default function WorkoutBuilderScreen() {
   // Modal State for adding exercises
   const [activeDayIdForPicker, setActiveDayIdForPicker] = useState<string | null>(null);
   const [exerciseSearch, setExerciseSearch] = useState('');
+  const [selectedMuscleFilter, setSelectedMuscleFilter] = useState<string>('ALL');
+  const [selectedEquipmentFilter, setSelectedEquipmentFilter] = useState<string>('ALL');
+
+  const MUSCLE_GROUPS = ['ALL', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Glutes'];
+  const EQUIPMENT_TYPES = ['ALL', 'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'];
 
   // Day Management Handlers
   const handleAddDay = () => {
@@ -144,6 +149,8 @@ export default function WorkoutBuilderScreen() {
   const handleOpenExercisePicker = (dayId: string) => {
     setActiveDayIdForPicker(dayId);
     setExerciseSearch('');
+    setSelectedMuscleFilter('ALL');
+    setSelectedEquipmentFilter('ALL');
   };
 
   const handleAddExerciseToDay = (catalogEx: typeof exerciseCatalog[0]) => {
@@ -154,7 +161,7 @@ export default function WorkoutBuilderScreen() {
       name: catalogEx.name,
       targetSets: 3,
       targetReps: '8-10',
-      targetWeightKg: 50,
+      targetWeightKg: 0,
     };
 
     setDays(
@@ -218,6 +225,7 @@ export default function WorkoutBuilderScreen() {
         title: title.trim(),
         days: formattedDays,
         assignedClientIds: selectedClientIds,
+        isAssignedToClient: selectedClientIds.length > 0,
       });
 
       const assignedMessage = selectedClientIds.length > 0
@@ -230,27 +238,42 @@ export default function WorkoutBuilderScreen() {
       createPlan(
         {
           title: title.trim(),
-          createdBy: 'usr_1',
+          createdBy: role,
           days: formattedDays,
           assignedClientIds: selectedClientIds,
+          isAssignedToClient: selectedClientIds.length > 0,
         },
         selectedClientIds
       );
 
       const assignedMessage = selectedClientIds.length > 0
         ? `Routine saved and added to the selected Client's Saved Routines!`
-        : `Routine saved to your personal Trainer library!`;
+        : `Routine saved to your library!`;
 
       Alert.alert('Routine Saved', assignedMessage);
       router.back();
     }
   };
 
-  const filteredCatalog = exerciseCatalog.filter(
-    (ex) =>
+  const filteredCatalog = exerciseCatalog.filter((ex) => {
+    const matchesSearch =
       ex.name.toLowerCase().includes(exerciseSearch.toLowerCase()) ||
-      ex.target_muscle.toLowerCase().includes(exerciseSearch.toLowerCase())
-  );
+      ex.target_muscle.toLowerCase().includes(exerciseSearch.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (selectedMuscleFilter !== 'ALL') {
+      const targetLower = ex.target_muscle.toLowerCase();
+      const filterLower = selectedMuscleFilter.toLowerCase();
+      if (!targetLower.includes(filterLower)) return false;
+    }
+
+    if (selectedEquipmentFilter !== 'ALL') {
+      if (ex.category.toLowerCase() !== selectedEquipmentFilter.toLowerCase()) return false;
+    }
+
+    return true;
+  });
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -589,16 +612,20 @@ export default function WorkoutBuilderScreen() {
                                 color: theme.text,
                               },
                             ]}
-                            value={String(ex.targetWeightKg || 50)}
+                            value={ex.targetWeightKg === 0 ? '' : String(ex.targetWeightKg)}
+                            placeholder="0"
+                            placeholderTextColor={theme.textMuted}
                             keyboardType="numeric"
-                            onChangeText={(val) =>
+                            onChangeText={(val) => {
+                              const cleaned = val.replace(/[^0-9.]/g, '');
+                              const num = cleaned === '' ? 0 : parseFloat(cleaned);
                               handleUpdateExerciseParam(
                                 day.id,
                                 ex.exerciseId,
                                 'targetWeightKg',
-                                parseFloat(val) || 0
-                              )
-                            }
+                                isNaN(num) ? 0 : num
+                              );
+                            }}
                           />
                         </View>
                       </View>
@@ -718,6 +745,94 @@ export default function WorkoutBuilderScreen() {
               value={exerciseSearch}
               onChangeText={setExerciseSearch}
             />
+
+            {/* Target Muscle Filter Chips */}
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', color: theme.textSecondary, marginBottom: 4, letterSpacing: 0.5 }}>
+                TARGET MUSCLE
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {MUSCLE_GROUPS.map((group) => {
+                  const isActive = selectedMuscleFilter === group;
+                  return (
+                    <TouchableOpacity
+                      key={group}
+                      style={[
+                        styles.catalogFilterPill,
+                        {
+                          backgroundColor: isActive
+                            ? theme.isDark ? theme.accentGold : theme.primary
+                            : theme.cardInner,
+                          borderColor: isActive
+                            ? theme.isDark ? theme.accentGold : theme.primary
+                            : theme.border,
+                        },
+                      ]}
+                      onPress={() => setSelectedMuscleFilter(group)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.catalogFilterPillText,
+                          {
+                            color: isActive
+                              ? theme.isDark ? '#0A1A12' : '#FFFFFF'
+                              : theme.textSecondary,
+                            fontWeight: isActive ? 'bold' : '600',
+                          },
+                        ]}
+                      >
+                        {group}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Equipment Filter Chips */}
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', color: theme.textSecondary, marginBottom: 4, letterSpacing: 0.5 }}>
+                EQUIPMENT TYPE
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {EQUIPMENT_TYPES.map((equip) => {
+                  const isActive = selectedEquipmentFilter === equip;
+                  return (
+                    <TouchableOpacity
+                      key={equip}
+                      style={[
+                        styles.catalogFilterPill,
+                        {
+                          backgroundColor: isActive
+                            ? theme.isDark ? theme.accentGold : theme.primary
+                            : theme.cardInner,
+                          borderColor: isActive
+                            ? theme.isDark ? theme.accentGold : theme.primary
+                            : theme.border,
+                        },
+                      ]}
+                      onPress={() => setSelectedEquipmentFilter(equip)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.catalogFilterPillText,
+                          {
+                            color: isActive
+                              ? theme.isDark ? '#0A1A12' : '#FFFFFF'
+                              : theme.textSecondary,
+                            fontWeight: isActive ? 'bold' : '600',
+                          },
+                        ]}
+                      >
+                        {equip}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
 
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
               {filteredCatalog.map((catalogEx) => (
@@ -1035,7 +1150,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+  catalogFilterPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  catalogFilterPillText: {
+    fontSize: 11,
   },
   catalogItemRow: {
     flexDirection: 'row',

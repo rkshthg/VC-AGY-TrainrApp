@@ -4,7 +4,7 @@ import Svg, { Path, Rect, Line, Defs, LinearGradient, Stop, Text as SvgText, Cir
 import { useTheme } from '../lib/theme';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
-import { formatVolume, getWeightUnitLabel } from '../lib/units';
+import { formatVolume, getWeightUnitLabel, convertWeight } from '../lib/units';
 
 export type WorkoutMetricFilter = 'VOLUME' | 'DURATION' | 'REPS';
 export type NutritionMetricFilter = 'CALORIES' | 'PROTEIN';
@@ -29,7 +29,11 @@ export interface AnalyticsDataPoint {
   proteinG: number;
 }
 
-export const WeeklyProfileAnalytics: React.FC = () => {
+export interface WeeklyProfileAnalyticsProps {
+  userId?: string;
+}
+
+export const WeeklyProfileAnalytics: React.FC<WeeklyProfileAnalyticsProps> = ({ userId }) => {
   const profile = useAuthStore((state) => state.profile);
   const unitSystem = useAuthStore((state) => state.unitSystem);
   const [workoutFilter, setWorkoutFilter] = useState<WorkoutMetricFilter>('VOLUME');
@@ -44,20 +48,20 @@ export const WeeklyProfileAnalytics: React.FC = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      const userId = profile?.id;
-      if (!userId) return;
+      const targetUserId = userId || profile?.id;
+      if (!targetUserId) return;
       setLoading(true);
       try {
         const [workoutsRes, mealsRes] = await Promise.all([
           supabase
             .from('workout_logs')
             .select('*, workout_log_sets(reps, is_completed)')
-            .eq('user_id', userId)
+            .eq('user_id', targetUserId)
             .order('created_at', { ascending: true }),
           supabase
             .from('meals')
             .select('created_at, total_calories, total_protein_g')
-            .eq('user_id', userId)
+            .eq('user_id', targetUserId)
             .order('created_at', { ascending: true })
         ]);
 
@@ -235,15 +239,19 @@ export const WeeklyProfileAnalytics: React.FC = () => {
     const isDaily = timeRange === '1W';
     switch (workoutFilter) {
       case 'VOLUME':
-        const maxVol = isDaily ? 30000 : 200000;
+        const metricMax = isDaily ? 30000 : 200000;
+        const maxVol = unitSystem === 'IMPERIAL' ? (isDaily ? 60000 : 400000) : metricMax;
+        const ticks = unitSystem === 'IMPERIAL' 
+          ? (isDaily ? ['60k', '45k', '30k', '15k', '0'] : ['400k', '300k', '200k', '100k', '0'])
+          : (isDaily ? ['30k', '22.5k', '15k', '7.5k', '0'] : ['200k', '150k', '100k', '50k', '0']);
         return {
           max: maxVol,
-          ticks: isDaily ? ['30k', '22.5k', '15k', '7.5k', '0'] : ['200k', '150k', '100k', '50k', '0'],
-          label: 'Workout Vol (kg)',
+          ticks,
+          label: `Workout Vol (${getWeightUnitLabel(unitSystem)})`,
           barGradientId: 'workoutVolGrad',
           primaryColor: theme.isDark ? theme.accentGold : theme.primary,
-          getVal: (d: AnalyticsDataPoint) => d.volKg,
-          fmtVal: (val: number) => (val >= 1000 ? `${(val / 1000).toFixed(val % 1000 === 0 ? 0 : 1)}k kg` : `${val} kg`),
+          getVal: (d: AnalyticsDataPoint) => convertWeight(d.volKg, unitSystem),
+          fmtVal: (val: number) => (val >= 1000 ? `${(val / 1000).toFixed(val % 1000 === 0 ? 0 : 1)}k ${getWeightUnitLabel(unitSystem)}` : `${val} ${getWeightUnitLabel(unitSystem)}`),
         };
       case 'DURATION':
         const maxDur = isDaily ? 90 : 80;
@@ -720,7 +728,7 @@ export const WeeklyProfileAnalytics: React.FC = () => {
                     ]}
                   >
                     {filter === 'VOLUME'
-                      ? 'Volume (kg)'
+                      ? `Volume (${getWeightUnitLabel(unitSystem)})`
                       : filter === 'DURATION'
                         ? 'Duration (min)'
                         : 'Total Reps'}

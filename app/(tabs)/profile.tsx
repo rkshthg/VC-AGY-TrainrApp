@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,6 +21,7 @@ import { WeeklyProfileAnalytics } from '../../components/WeeklyProfileAnalytics'
 import { useAuthStore } from '../../store/authStore';
 import { useProgressStore, CheckinPhoto } from '../../store/progressStore';
 import { useWorkoutStore } from '../../store/workoutStore';
+import { useNutritionStore } from '../../store/nutritionStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
 import {
@@ -32,13 +34,14 @@ import {
 } from '../../lib/units';
 
 export default function ProfileScreen() {
-  const { profile, role, trainerCode, linkedTrainerId, setProfile, unitSystem, unlinkTrainer, linkTrainer } = useAuthStore();
+  const { profile, role, trainerCode, linkedTrainerId, setProfile, unitSystem, unlinkTrainer, linkTrainer, updateAvatarUrl } = useAuthStore();
   const theme = useTheme();
   const {
     weightHistory,
     checkinPhotos,
     checkinLogs,
     latestMeasurements,
+    fetchProgressData,
     getCalculatedMetrics,
     addWeightLog,
     updateMeasurements,
@@ -47,7 +50,28 @@ export default function ProfileScreen() {
     addCheckinLog,
     deleteCheckinLog,
   } = useProgressStore();
+  const fetchTodayMeals = useNutritionStore((state) => state.fetchTodayMeals);
+  const fetchWorkoutData = useWorkoutStore((state) => state.fetchWorkoutData);
   const personalRecords = useWorkoutStore((state) => state.personalRecords);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (profile?.id) {
+        await Promise.all([
+          fetchProgressData(profile.id),
+          fetchTodayMeals(profile.id),
+          fetchWorkoutData(profile.id),
+        ]);
+      }
+    } catch (e) {
+      console.warn('Profile refresh error:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const addLiveFeedEvent = useTrainerStore((state) => state.addLiveFeedEvent);
 
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -66,23 +90,85 @@ export default function ProfileScreen() {
     );
   };
 
-  const avatarPresets = [
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300',
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300',
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300',
-    'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=300',
-    'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300',
-  ];
+  const handleUploadProfilePicture = async () => {
+    try {
+      const { status: existingStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+      let status = existingStatus;
+      if (status !== 'granted') {
+        const { status: askStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        status = askStatus;
+      }
 
-  const handleSelectAvatar = (url?: string) => {
-    if (!profile) return;
-    setProfile({
-      ...profile,
-      avatarUrl: url,
-    });
-    setAvatarModalVisible(false);
-    Alert.alert('Profile Picture Updated', 'Your profile picture has been updated!');
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Permission to access photo library is required.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        const success = await updateAvatarUrl(uri);
+        if (success) {
+          setAvatarModalVisible(false);
+          Alert.alert('Success', 'Profile picture updated successfully!');
+        } else {
+          Alert.alert('Error', 'Failed to update profile picture.');
+        }
+      }
+    } catch (e) {
+      console.warn('ImagePicker error:', e);
+      Alert.alert('Error', 'An error occurred while picking the image.');
+    }
+  };
+
+  const handleCameraProfilePicture = async () => {
+    try {
+      const { status: existingStatus } = await ImagePicker.getCameraPermissionsAsync();
+      let status = existingStatus;
+      if (status !== 'granted') {
+        const { status: askStatus } = await ImagePicker.requestCameraPermissionsAsync();
+        status = askStatus;
+      }
+
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Permission to access camera is required.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        const success = await updateAvatarUrl(uri);
+        if (success) {
+          setAvatarModalVisible(false);
+          Alert.alert('Success', 'Profile picture updated successfully!');
+        } else {
+          Alert.alert('Error', 'Failed to update profile picture.');
+        }
+      }
+    } catch (e) {
+      console.warn('Camera error:', e);
+      Alert.alert('Error', 'An error occurred while opening the camera.');
+    }
+  };
+
+  const handleRemoveProfilePicture = async () => {
+    const success = await updateAvatarUrl(undefined);
+    if (success) {
+      setAvatarModalVisible(false);
+      Alert.alert('Success', 'Profile picture removed.');
+    } else {
+      Alert.alert('Error', 'Failed to remove profile picture.');
+    }
   };
 
   const handleLinkTrainer = async () => {
@@ -289,7 +375,18 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.isDark ? theme.accentGold : theme.primary}
+            colors={[theme.isDark ? theme.accentGold : theme.primary]}
+          />
+        }
+      >
         {/* 👤 COMPACT HORIZONTAL PROFILE HEADER */}
         <View
           style={[
@@ -348,9 +445,6 @@ export default function ProfileScreen() {
           {/* Identity Info */}
           <View style={styles.profileHeaderInfo}>
             <Text style={[styles.heroNameText, { color: theme.text }]}>{profile?.fullName || 'Alex Rivers'}</Text>
-            <Text style={[styles.heroSubText, { color: theme.textSecondary }]}>
-              {role === 'TRAINER' ? 'Elite Conditioning Specialist' : 'Fitness Enthusiast'}
-            </Text>
 
             {/* Trainer Code Chip (Trainer Account) */}
             {role === 'TRAINER' && (
@@ -406,7 +500,7 @@ export default function ProfileScreen() {
                     LINKED TRAINER
                   </Text>
                   <Text style={[styles.linkedTrainerChipName, { color: theme.text }]}>
-                    Active Trainer ({linkedTrainerId})
+                    {profile?.linkedTrainerName || 'Active Trainer'} ({profile?.linkedTrainerCode || linkedTrainerId})
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -1498,42 +1592,62 @@ export default function ProfileScreen() {
             </View>
 
             <Text style={[styles.modalSubText, { color: theme.textSecondary }]}>
-              Select a photo preset or remove photo to use initials:
+              Choose an option to update your profile picture:
             </Text>
 
-            <View style={styles.avatarPresetGrid}>
-              {avatarPresets.map((uri, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[
-                    styles.avatarPresetSlot,
-                    profile?.avatarUrl === uri && {
-                      borderColor: theme.isDark ? theme.accentGold : theme.primary,
-                    },
-                  ]}
-                  onPress={() => handleSelectAvatar(uri)}
-                  activeOpacity={0.8}
-                >
-                  <Image source={{ uri }} style={styles.avatarPresetImg} />
-                </TouchableOpacity>
-              ))}
+            <View style={styles.avatarActionContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.avatarActionBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={handleUploadProfilePicture}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="image-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
+                <Text style={[styles.avatarActionBtnText, { color: theme.text }]}>
+                  Choose from Gallery
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.avatarActionBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={handleCameraProfilePicture}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="camera-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
+                <Text style={[styles.avatarActionBtnText, { color: theme.text }]}>
+                  Take Photo
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.removeAvatarBtn,
-                {
-                  backgroundColor: theme.cardInner,
-                  borderColor: theme.danger,
-                },
-              ]}
-              onPress={() => handleSelectAvatar(undefined)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.removeAvatarBtnText, { color: theme.danger }]}>
-                Remove Photo (Use Initials)
-              </Text>
-            </TouchableOpacity>
+            {profile?.avatarUrl ? (
+              <TouchableOpacity
+                style={[
+                  styles.removeAvatarBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.danger,
+                  },
+                ]}
+                onPress={handleRemoveProfilePicture}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.removeAvatarBtnText, { color: theme.danger }]}>
+                  Remove Current Photo
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -1769,31 +1883,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
   },
-  avatarPresetGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  avatarActionContainer: {
     gap: 12,
-    justifyContent: 'center',
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  avatarPresetSlot: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  avatarPresetImg: {
+    marginVertical: 16,
     width: '100%',
-    height: '100%',
+  },
+  avatarActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  avatarActionBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   removeAvatarBtn: {
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
+    width: '100%',
   },
   removeAvatarBtnText: {
     fontSize: 13,

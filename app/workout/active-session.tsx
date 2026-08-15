@@ -18,7 +18,7 @@ import { useWorkoutStore, ExerciseDef } from '../../store/workoutStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
-import { formatVolume, getWeightUnitLabel } from '../../lib/units';
+import { formatVolume, getWeightUnitLabel, convertWeight, parseWeightToKg, formatWeight } from '../../lib/units';
 
 export default function ActiveSessionScreen() {
   const router = useRouter();
@@ -73,8 +73,8 @@ export default function ActiveSessionScreen() {
     if (header) {
       const breakdownItems = (header.exerciseLogs || []).map((log) => ({
         title: log.name,
-        subtitle: `${log.sets} Sets • ${log.reps} | Target: ${log.targetWeightKg} kg`,
-        value: `${log.totalVolumeKg.toLocaleString()} kg`,
+        subtitle: `${log.sets} Sets • ${log.reps} | Target: ${formatWeight(log.targetWeightKg, unitSystem)}`,
+        value: formatVolume(log.totalVolumeKg, unitSystem),
       }));
 
       addLiveFeedEvent({
@@ -94,7 +94,7 @@ export default function ActiveSessionScreen() {
 
       Alert.alert(
         'Workout Completed! 🏆',
-        `Great session! You completed ${header.title} in ${header.durationMinutes} mins with ${header.totalVolumeKg} kg total volume.`
+        `Great session! You completed ${header.title} in ${header.durationMinutes} mins with ${formatVolume(header.totalVolumeKg, unitSystem)} total volume.`
       );
     }
     router.replace('/(tabs)/workout');
@@ -346,11 +346,12 @@ export default function ActiveSessionScreen() {
                     >
                       <TextInput
                         style={[styles.setField, { color: theme.text }]}
-                        value={String(set.weightKg)}
+                        value={String(convertWeight(set.weightKg, unitSystem))}
                         keyboardType="numeric"
                         onChangeText={(val) => {
                           const num = parseFloat(val) || 0;
-                          updateSetValues(ex.exerciseId, idx, num, set.reps);
+                          const kgVal = parseWeightToKg(num, unitSystem);
+                          updateSetValues(ex.exerciseId, idx, kgVal, set.reps);
                         }}
                       />
                       <Text style={[styles.unitTag, { color: theme.textMuted }]}>{getWeightUnitLabel(unitSystem)}</Text>

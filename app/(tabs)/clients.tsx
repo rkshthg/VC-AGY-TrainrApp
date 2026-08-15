@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,8 +19,12 @@ import { useTheme } from '../../lib/theme';
 
 export default function ClientsScreen() {
   const router = useRouter();
-  const { clients, updateClientMacroTargets } = useTrainerStore();
+  const { clients, isLoading, fetchRoster, updateClientMacroTargets } = useTrainerStore();
   const theme = useTheme();
+
+  useEffect(() => {
+    fetchRoster();
+  }, []);
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [filter, setFilter] = useState<'ALL' | 'ON_TRACK' | 'NEEDS_ATTENTION'>('ALL');
@@ -78,7 +83,18 @@ export default function ClientsScreen() {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <HeaderBar onOpenSettings={() => setDrawerVisible(true)} />
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={fetchRoster}
+            colors={[theme.isDark ? theme.accentGold : theme.primary]}
+            tintColor={theme.isDark ? theme.accentGold : theme.primary}
+          />
+        }
+      >
         {/* KPI Summary Row */}
         <View style={styles.kpiRow}>
           <View
@@ -323,6 +339,29 @@ export default function ClientsScreen() {
                         Routine: {client.currentPlanTitle || 'No Active Plan'}
                       </Text>
                     </View>
+
+                    {/* Upper Right View Full Profile Icon Button */}
+                    <TouchableOpacity
+                      style={[
+                        {
+                          backgroundColor: theme.cardAlt,
+                          borderColor: theme.border,
+                          borderWidth: 1,
+                          borderRadius: 12,
+                          padding: 8,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        },
+                      ]}
+                      onPress={() => router.push(`/clients/${client.clientId}`)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name="person-outline"
+                        size={18}
+                        color={theme.isDark ? theme.accentGold : theme.primary}
+                      />
+                    </TouchableOpacity>
                   </View>
 
                   {/* Nutrition Progress Indicator */}
@@ -530,53 +569,6 @@ export default function ClientsScreen() {
                           </View>
                         );
                       })()}
-
-                      {/* Trainer Actions Bar */}
-                      <View style={styles.trainerActionBar}>
-                        {/* 👤 View Full Profile Button */}
-                        <TouchableOpacity
-                          style={[
-                            styles.actionBtnPrimary,
-                            {
-                              backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
-                              ...theme.shadowButton,
-                            },
-                          ]}
-                          onPress={() => router.push(`/clients/${client.clientId}`)}
-                          activeOpacity={0.8}
-                        >
-                          <Text
-                            style={[
-                              styles.actionBtnPrimaryText,
-                              { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
-                            ]}
-                          >
-                            👤 View Full Profile
-                          </Text>
-                        </TouchableOpacity>
-
-                        {/* 🎯 Edit Targets Button */}
-                        <TouchableOpacity
-                          style={[
-                            styles.actionBtnSecondary,
-                            {
-                              backgroundColor: theme.card,
-                              borderColor: theme.isDark ? theme.accentGold : theme.primary,
-                            },
-                          ]}
-                          onPress={() => handleOpenTargetModal(client)}
-                          activeOpacity={0.8}
-                        >
-                          <Text
-                            style={[
-                              styles.actionBtnSecondaryText,
-                              { color: theme.isDark ? theme.accentGold : theme.primary },
-                            ]}
-                          >
-                            🎯 Edit Targets
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
                     </>
                   )}
                 </View>

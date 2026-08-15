@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,40 +10,182 @@ import {
   TextInput,
   Image,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useProgressStore } from '../../store/progressStore';
-import { useWorkoutStore } from '../../store/workoutStore';
+import { useWorkoutStore, CompletedWorkoutHeader } from '../../store/workoutStore';
+import { useNutritionStore, MealEntry } from '../../store/nutritionStore';
 import { useAuthStore } from '../../store/authStore';
 import { WeeklyProfileAnalytics } from '../../components/WeeklyProfileAnalytics';
 import { useTheme } from '../../lib/theme';
+import { formatWeight, formatVolume, formatHeight, formatLength } from '../../lib/units';
+import { supabase } from '../../lib/supabase';
 
 export default function ClientInspectionDetailScreen() {
   const router = useRouter();
   const { clientId } = useLocalSearchParams();
   const { clients, updateClientMacroTargets, unlinkClient } = useTrainerStore();
-  const { weightHistory, checkinPhotos, getCalculatedMetrics, deleteCheckinPhoto } = useProgressStore();
-  const personalRecords = useWorkoutStore((state) => state.personalRecords);
-  const profile = useAuthStore((state) => state.profile);
+  const { getCalculatedMetrics } = useProgressStore();
+  const { savedPlans } = useWorkoutStore();
+  const unitSystem = useAuthStore((state) => state.unitSystem);
   const theme = useTheme();
+
+  const [clientProfile, setClientProfile] = useState<any>(null);
+  const [clientMeals, setClientMeals] = useState<MealEntry[]>([]);
+  const [clientWorkouts, setClientWorkouts] = useState<CompletedWorkoutHeader[]>([]);
+  const [clientPRs, setClientPRs] = useState<any[]>([]);
+  const [clientCheckinPhotos, setClientCheckinPhotos] = useState<any[]>([]);
+  const [clientWeightLogs, setClientWeightLogs] = useState<any[]>([]);
+  const [clientLatestMeasurements, setClientLatestMeasurements] = useState<any>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   // Edit Targets Modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [targetCaloriesInput, setTargetCaloriesInput] = useState<string>('2100');
 
   const client = clients.find((c) => c.clientId === clientId) || clients[0];
+  const targetId = (clientId as string) || client?.clientId;
+  const assignedPlan = savedPlans.find((p) => p.assignedClientIds?.includes(targetId || ''));
+  const activePlanTitle = assignedPlan?.title || client?.currentPlanTitle || 'No Plan';
+
+  useEffect(() => {
+    if (!targetId) return;
+    let isMounted = true;
+    setIsLoading(true);
+
+    const loadClientProfileData = async () => {
+      try {
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const [userRes, weightRes, measurementRes, mealsRes, workoutsRes, prsRes, photosRes] = await Promise.all([
+          supabase.from('users').select('*').eq('id', targetId).maybeSingle(),
+          supabase.from('weight_logs').select('*').eq('user_id', targetId).order('recorded_at', { ascending: false }),
+          supabase.from('body_measurements').select('*').eq('user_id', targetId).order('recorded_at', { ascending: false }),
+          supabase.from('meals').select('*, meal_items(*)').eq('user_id', targetId).gte('created_at', startOfDay.toISOString()),
+          supabase.from('workout_logs').select('*, workout_log_sets(*)').eq('user_id', targetId).gte('created_at', startOfDay.toISOString()),
+          supabase.from('personal_records').select('*').eq('user_id', targetId),
+          supabase.from('checkin_photos').select('*').eq('user_id', targetId).order('created_at', { ascending: false }),
+        ]);
+
+        if (!isMounted) return;
+
+        if (userRes.data) setClientProfile(userRes.data);
+        setClientWeightLogs(weightRes.data || []);
+
+        const latestMeas = (measurementRes.data || [])[0] || {};
+        setClientLatestMeasurements({
+          neckCm: latestMeas.neck_cm,
+          shouldersCm: latestMeas.shoulders_cm,
+          chestCm: latestMeas.chest_cm,
+          waistCm: latestMeas.waist_cm,
+          hipsCm: latestMeas.hips_cm,
+          bicepsCm: latestMeas.biceps_cm,
+          bicepsLCm: latestMeas.biceps_l_cm,
+          bicepsRCm: latestMeas.biceps_r_cm,
+          thighsCm: latestMeas.thighs_cm,
+          thighsLCm: latestMeas.thighs_l_cm,
+          thighsRCm: latestMeas.thighs_r_cm,
+        });
+
+        const meals: MealEntry[] = (mealsRes.data || []).map((m: any) => ({
+          id: m.id,
+          userId: m.user_id,
+          dishName: m.dish_name,
+          category: m.category,
+          timestamp: m.created_at,
+          photoUrl: m.photo_url,
+          totalCalories: m.total_calories,
+          totalProteinG: m.total_protein_g,
+          totalCarbsG: m.total_carbs_g,
+          totalFatG: m.total_fat_g,
+          items: (m.meal_items || []).map((i: any) => ({
+            id: i.id,
+            name: i.name,
+            quantity: i.quantity,
+            calories: i.calories,
+            proteinG: i.protein_g,
+            carbsG: i.carbs_g,
+            fatG: i.fat_g,
+          })),
+        }));
+        setClientMeals(meals);
+
+        const workouts: CompletedWorkoutHeader[] = (workoutsRes.data || []).map((log: any) => {
+          const rawSets = (log.workout_log_sets || []).filter((s: any) => s.is_completed !== false);
+          const exerciseGroupMap: Record<string, any[]> = {};
+          rawSets.forEach((s: any) => {
+            const exName = s.exercise_name || 'Exercise';
+            if (!exerciseGroupMap[exName]) exerciseGroupMap[exName] = [];
+            exerciseGroupMap[exName].push(s);
+          });
+
+          const exerciseLogs = Object.keys(exerciseGroupMap).map((exName) => {
+            const setsArr = exerciseGroupMap[exName];
+            const totalVol = setsArr.reduce((acc: number, s: any) => acc + Number(s.weight_kg) * Number(s.reps), 0);
+            const maxWeight = setsArr.reduce((max: number, s: any) => Math.max(max, Number(s.weight_kg)), 0);
+            const avgReps = Math.round(setsArr.reduce((acc: number, s: any) => acc + Number(s.reps), 0) / setsArr.length);
+
+            return {
+              name: exName,
+              sets: setsArr.length,
+              reps: `${avgReps} reps`,
+              targetWeightKg: maxWeight,
+              totalVolumeKg: totalVol,
+              rawSets: setsArr,
+            };
+          });
+
+          return {
+            id: log.id,
+            title: log.title,
+            date: log.created_at,
+            durationMinutes: log.duration_minutes,
+            totalVolumeKg: log.total_volume_kg,
+            exerciseCount: log.exercise_count || exerciseLogs.length,
+            exerciseLogs,
+          };
+        });
+        setClientWorkouts(workouts);
+
+        const parsedPRs = (prsRes.data || []).map((pr: any) => ({
+          id: pr.id,
+          exerciseId: pr.exercise_id,
+          exerciseName: pr.exercise_name || 'Exercise',
+          weightKg: pr.weight_kg,
+          reps: pr.reps,
+          oneRmKg: pr.one_rm_kg,
+          date: pr.achieved_at,
+        }));
+        setClientPRs(parsedPRs);
+
+        setClientCheckinPhotos(photosRes.data || []);
+        setIsLoading(false);
+      } catch (err) {
+        console.warn('Failed loading client inspection data:', err);
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    loadClientProfileData();
+    return () => {
+      isMounted = false;
+    };
+  }, [targetId]);
 
   // Auto-calculated health metrics matching Client Personal Profile
+  const latestWeightKg = clientWeightLogs[0]?.weight_kg || clientProfile?.weight_kg || 75;
   const healthStats = getCalculatedMetrics({
-    heightCm: profile?.heightCm || 175,
-    weightKg: profile?.weightKg || 76.4,
-    sex: profile?.sex || 'MALE',
-    neckCm: profile?.bodyMeasurements?.neckCm || 39,
-    waistCm: profile?.bodyMeasurements?.waistCm || 84,
-    hipsCm: profile?.bodyMeasurements?.hipsCm || 98,
-    activityLevel: profile?.activityLevel || 'MODERATELY_ACTIVE',
+    heightCm: clientProfile?.height_cm || 175,
+    weightKg: latestWeightKg,
+    sex: clientProfile?.sex || 'MALE',
+    neckCm: clientLatestMeasurements.neckCm || clientProfile?.body_measurements?.neckCm || 39,
+    waistCm: clientLatestMeasurements.waistCm || clientProfile?.body_measurements?.waistCm || 84,
+    hipsCm: clientLatestMeasurements.hipsCm || clientProfile?.body_measurements?.hipsCm || 98,
+    activityLevel: clientProfile?.activity_level || 'MODERATELY_ACTIVE',
   });
 
   const handleUnlink = () => {
@@ -86,61 +228,20 @@ export default function ClientInspectionDetailScreen() {
     Alert.alert('Targets Saved', `Updated target calories to ${calories} kcal.`);
   };
 
-  const targetCal = client?.targetCalories || 2100;
-  const loggedCal = client?.todayCaloriesLogged || 1850;
+  const targetCal = client?.targetCalories || 2500;
+  const loggedCal = clientMeals.reduce((sum, m) => sum + (m.totalCalories || 0), 0);
+  const loggedProtein = clientMeals.reduce((sum, m) => sum + (m.totalProteinG || 0), 0);
+  const loggedCarbs = clientMeals.reduce((sum, m) => sum + (m.totalCarbsG || 0), 0);
+  const loggedFat = clientMeals.reduce((sum, m) => sum + (m.totalFatG || 0), 0);
 
-  const targetProtein = Math.round((targetCal * 0.3) / 4);
-  const loggedProtein = Math.round((loggedCal * 0.3) / 4);
+  const targetProtein = client?.targetProtein || Math.round((targetCal * 0.3) / 4);
   const proteinPct = Math.min(100, Math.round((loggedProtein / targetProtein) * 100));
 
-  const targetCarbs = Math.round((targetCal * 0.4) / 4);
-  const loggedCarbs = Math.round((loggedCal * 0.4) / 4);
+  const targetCarbs = client?.targetCarbs || Math.round((targetCal * 0.4) / 4);
   const carbsPct = Math.min(100, Math.round((loggedCarbs / targetCarbs) * 100));
 
-  const targetFat = Math.round((targetCal * 0.3) / 9);
-  const loggedFat = Math.round((loggedCal * 0.3) / 9);
+  const targetFat = client?.targetFat || Math.round((targetCal * 0.3) / 9);
   const fatPct = Math.min(100, Math.round((loggedFat / targetFat) * 100));
-
-  const sampleWorkoutDetails = {
-    title: client?.currentPlanTitle ? `${client.currentPlanTitle} - Day 1` : 'Chest & Triceps Hypertrophy',
-    time: '10:15 AM',
-    duration: '42 min',
-    setsCount: 14,
-    volumeKg: 3850,
-    exercises: [
-      {
-        name: 'Barbell Bench Press',
-        sets: [
-          { setNum: 1, weight: 80, reps: 8 },
-          { setNum: 2, weight: 85, reps: 8 },
-          { setNum: 3, weight: 85, reps: 6 },
-          { setNum: 4, weight: 80, reps: 8 },
-        ],
-      },
-      {
-        name: 'Incline DB Press',
-        sets: [
-          { setNum: 1, weight: 28, reps: 10 },
-          { setNum: 2, weight: 30, reps: 10 },
-          { setNum: 3, weight: 30, reps: 8 },
-        ],
-      },
-      {
-        name: 'Tricep Rope Pushdown',
-        sets: [
-          { setNum: 1, weight: 32, reps: 12 },
-          { setNum: 2, weight: 36, reps: 10 },
-          { setNum: 3, weight: 36, reps: 10 },
-        ],
-      },
-    ],
-  };
-
-  const sampleLoggedMeals = [
-    { title: 'Breakfast: Eggs & Sourdough Toast', desc: '3 Whole Eggs, 2 Toast, Butter', kcal: 520 },
-    { title: 'Lunch: Grilled Chicken & Rice', desc: '200g Chicken, 150g Rice, Broccoli', kcal: 680 },
-    { title: 'Dinner: Salmon & Roasted Veggies', desc: '180g Salmon, Asparagus, Olive Oil', kcal: 650 },
-  ];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -195,7 +296,7 @@ export default function ClientInspectionDetailScreen() {
               </View>
             </View>
             <Text style={[styles.headerSubText, { color: theme.textSecondary }]}>
-              Plan: {client?.currentPlanTitle || 'No Plan'} • Goal: Hypertrophy
+              Plan: {activePlanTitle}
             </Text>
           </View>
         </View>
@@ -355,28 +456,40 @@ export default function ClientInspectionDetailScreen() {
 
             {/* Logged Meals List */}
             <Text style={[styles.mealsListHeader, { color: theme.textSecondary }]}>Logged Meals Today:</Text>
-            {sampleLoggedMeals.map((meal, idx) => (
-              <View
-                key={idx}
-                style={[
-                  styles.mealRow,
-                  { backgroundColor: theme.card, borderColor: theme.border },
-                ]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.mealTitle, { color: theme.text }]}>{meal.title}</Text>
-                  <Text style={[styles.mealDesc, { color: theme.textMuted }]}>{meal.desc}</Text>
-                </View>
-                <Text
+            {clientMeals.length === 0 ? (
+              <Text style={[styles.mealDesc, { color: theme.textMuted, marginVertical: 8 }]}>
+                No meals logged today yet by this client.
+              </Text>
+            ) : (
+              clientMeals.map((meal, idx) => (
+                <View
+                  key={meal.id || idx}
                   style={[
-                    styles.mealKcal,
-                    { color: theme.isDark ? theme.accentGold : theme.primary },
+                    styles.mealRow,
+                    { backgroundColor: theme.card, borderColor: theme.border },
                   ]}
                 >
-                  {meal.kcal} kcal
-                </Text>
-              </View>
-            ))}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.mealTitle, { color: theme.text }]}>
+                      {meal.category}: {meal.dishName}
+                    </Text>
+                    <Text style={[styles.mealDesc, { color: theme.textMuted }]}>
+                      {meal.items && meal.items.length > 0
+                        ? meal.items.map((i) => `${i.name} (${i.quantity})`).join(', ')
+                        : `${meal.totalProteinG}g P • ${meal.totalCarbsG}g C • ${meal.totalFatG}g F`}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.mealKcal,
+                      { color: theme.isDark ? theme.accentGold : theme.primary },
+                    ]}
+                  >
+                    {meal.totalCalories} kcal
+                  </Text>
+                </View>
+              ))
+            )}
           </View>
 
           {/* Today's Workout Breakdown */}
@@ -397,90 +510,92 @@ export default function ClientInspectionDetailScreen() {
               </Text>
               <View
                 style={[
-                  client?.todayWorkoutDone ? styles.statusDone : styles.statusPending,
+                  clientWorkouts.length > 0 ? styles.statusDone : styles.statusPending,
                   {
-                    backgroundColor: client?.todayWorkoutDone
+                    backgroundColor: clientWorkouts.length > 0
                       ? theme.isDark
                         ? theme.badgeBg
                         : '#E8F5E9'
                       : theme.isDark
                       ? '#3B1A08'
                       : '#FEF3C7',
-                    borderColor: client?.todayWorkoutDone ? theme.success : theme.warning,
+                    borderColor: clientWorkouts.length > 0 ? theme.success : theme.warning,
                   },
                 ]}
               >
                 <Text
                   style={[
                     styles.statusTagText,
-                    { color: client?.todayWorkoutDone ? theme.success : theme.warning },
+                    { color: clientWorkouts.length > 0 ? theme.success : theme.warning },
                   ]}
                 >
-                  {client?.todayWorkoutDone ? 'Completed' : 'Pending'}
+                  {clientWorkouts.length > 0 ? 'Completed' : 'Pending'}
                 </Text>
               </View>
             </View>
 
-            {client?.todayWorkoutDone ? (
-              <>
-                <Text style={[styles.workoutSessionTitle, { color: theme.text }]}>{sampleWorkoutDetails.title}</Text>
+            {clientWorkouts.length > 0 ? (
+              clientWorkouts.map((w, wIdx) => (
+                <View key={w.id || wIdx} style={{ marginBottom: 12 }}>
+                  <Text style={[styles.workoutSessionTitle, { color: theme.text }]}>{w.title}</Text>
 
-                <View style={styles.workoutStatsRow}>
-                  <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
-                    <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{sampleWorkoutDetails.duration}</Text>
-                    <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Duration</Text>
-                  </View>
-                  <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
-                    <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{sampleWorkoutDetails.setsCount} Sets</Text>
-                    <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Completed</Text>
-                  </View>
-                  <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
-                    <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{sampleWorkoutDetails.volumeKg.toLocaleString()} kg</Text>
-                    <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Total Volume</Text>
-                  </View>
-                </View>
-
-                <View style={styles.exList}>
-                  {sampleWorkoutDetails.exercises.map((ex, exIdx) => (
-                    <View
-                      key={exIdx}
-                      style={[styles.exCard, { backgroundColor: theme.card }]}
-                    >
-                      <Text style={[styles.exName, { color: theme.text }]}>{ex.name}</Text>
-                      <View style={styles.setsList}>
-                        {ex.sets.map((set, sIdx) => (
-                          <View
-                            key={sIdx}
-                            style={[styles.setRow, { backgroundColor: theme.cardInner }]}
-                          >
-                            <Text
-                              style={[
-                                styles.setNum,
-                                { color: theme.isDark ? theme.accentGold : theme.primary },
-                              ]}
-                            >
-                              Set {set.setNum}
-                            </Text>
-                            <Text style={[styles.setVal, { color: theme.textSecondary }]}>
-                              {set.weight} kg × {set.reps} reps
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
+                  <View style={styles.workoutStatsRow}>
+                    <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
+                      <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{w.durationMinutes} min</Text>
+                      <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Duration</Text>
                     </View>
-                  ))}
+                    <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
+                      <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{w.exerciseCount} Exercises</Text>
+                      <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Completed</Text>
+                    </View>
+                    <View style={[styles.workoutKpiChip, { backgroundColor: theme.card }]}>
+                      <Text style={[styles.workoutKpiVal, { color: theme.text }]}>{formatVolume(w.totalVolumeKg, unitSystem)}</Text>
+                      <Text style={[styles.workoutKpiLabel, { color: theme.textMuted }]}>Total Volume</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.exList}>
+                    {(w.exerciseLogs || []).map((ex, exIdx) => (
+                      <View
+                        key={exIdx}
+                        style={[styles.exCard, { backgroundColor: theme.card }]}
+                      >
+                        <Text style={[styles.exName, { color: theme.text }]}>{ex.name}</Text>
+                        <View style={styles.setsList}>
+                          {((ex as any).rawSets || []).map((set: any, sIdx: number) => (
+                            <View
+                              key={sIdx}
+                              style={[styles.setRow, { backgroundColor: theme.cardInner }]}
+                            >
+                              <Text
+                                style={[
+                                  styles.setNum,
+                                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                                ]}
+                              >
+                                Set {set.set_number || sIdx + 1}
+                              </Text>
+                              <Text style={[styles.setVal, { color: theme.textSecondary }]}>
+                                {formatWeight(set.weight_kg, unitSystem)} × {set.reps} reps
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </>
+              ))
             ) : (
               <Text style={[styles.emptyWorkoutText, { color: theme.textMuted }]}>
-                No workout logged yet today. Scheduled routine: "{client?.currentPlanTitle || 'Routine'}".
+                No workout logged yet today by this client. Routine: "{activePlanTitle}".
               </Text>
             )}
           </View>
         </View>
 
         {/* SECTION 2: CLIENT PERFORMANCE ANALYTICS */}
-        <WeeklyProfileAnalytics />
+        <WeeklyProfileAnalytics userId={targetId} />
 
         {/* SECTION 3: AUTO-CALCULATED HEALTH METRICS */}
         <View
@@ -576,7 +691,7 @@ export default function ClientInspectionDetailScreen() {
           </View>
         </View>
 
-        {/* SECTION 4: PERSONAL RECORDS (1RMs) */}
+        {/* SECTION 4: BODY MEASUREMENTS (2-COLUMN GRID) */}
         <View
           style={[
             styles.sectionCard,
@@ -587,44 +702,156 @@ export default function ClientInspectionDetailScreen() {
             },
           ]}
         >
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Personal Records (1RMs)</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Body Measurements</Text>
 
-          <View style={styles.prGrid}>
+          <View style={styles.measurementsGrid}>
+            {/* Height */}
             <View
               style={[
-                styles.prTile,
+                styles.measureTile,
                 { backgroundColor: theme.cardInner, borderColor: theme.border },
               ]}
             >
-              <Text style={[styles.prExercise, { color: theme.textSecondary }]}>Bench Press</Text>
-              <Text
-                style={[
-                  styles.prValue,
-                  { color: theme.isDark ? theme.accentGold : theme.primary },
-                ]}
-              >
-                {personalRecords['ex_01']?.oneRmKg ? `${personalRecords['ex_01'].oneRmKg} kg` : '95.0 kg'}
+              <View style={styles.measureTileHeader}>
+                <Ionicons name="resize-outline" size={14} color={theme.textSecondary} />
+                <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>HEIGHT</Text>
+              </View>
+              <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                {formatHeight(clientProfile?.height_cm || 175, unitSystem)}
               </Text>
-              <Text style={[styles.prFormula, { color: theme.textMuted }]}>Epley 1RM Formula</Text>
             </View>
 
+            {/* Weight */}
             <View
               style={[
-                styles.prTile,
+                styles.measureTile,
                 { backgroundColor: theme.cardInner, borderColor: theme.border },
               ]}
             >
-              <Text style={[styles.prExercise, { color: theme.textSecondary }]}>Back Squat</Text>
-              <Text
+              <View style={styles.measureTileHeader}>
+                <Ionicons name="scale-outline" size={14} color={theme.textSecondary} />
+                <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>WEIGHT</Text>
+              </View>
+              <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                {formatWeight(latestWeightKg, unitSystem)}
+              </Text>
+            </View>
+
+            {/* Neck */}
+            {clientLatestMeasurements?.neckCm ? (
+              <View
                 style={[
-                  styles.prValue,
-                  { color: theme.isDark ? theme.accentGold : theme.primary },
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
                 ]}
               >
-                {personalRecords['ex_07']?.oneRmKg ? `${personalRecords['ex_07'].oneRmKg} kg` : '128.3 kg'}
-              </Text>
-              <Text style={[styles.prFormula, { color: theme.textMuted }]}>Epley 1RM Formula</Text>
-            </View>
+                <View style={styles.measureTileHeader}>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>NECK</Text>
+                </View>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {formatLength(clientLatestMeasurements.neckCm, unitSystem)}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Chest */}
+            {clientLatestMeasurements?.chestCm ? (
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
+                <View style={styles.measureTileHeader}>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>CHEST</Text>
+                </View>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {formatLength(clientLatestMeasurements.chestCm, unitSystem)}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Waist */}
+            {clientLatestMeasurements?.waistCm ? (
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
+                <View style={styles.measureTileHeader}>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>WAIST</Text>
+                </View>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {formatLength(clientLatestMeasurements.waistCm, unitSystem)}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Hips */}
+            {clientLatestMeasurements?.hipsCm ? (
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
+                <View style={styles.measureTileHeader}>
+                  <Ionicons name="options-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>HIPS</Text>
+                </View>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {formatLength(clientLatestMeasurements.hipsCm, unitSystem)}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Biceps */}
+            {clientLatestMeasurements?.bicepsCm || clientLatestMeasurements?.bicepsLCm || clientLatestMeasurements?.bicepsRCm ? (
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
+                <View style={styles.measureTileHeader}>
+                  <Ionicons name="fitness-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>BICEPS</Text>
+                </View>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {formatLength(
+                    clientLatestMeasurements.bicepsCm ||
+                      Math.round(((clientLatestMeasurements.bicepsLCm || 0) + (clientLatestMeasurements.bicepsRCm || 0)) / 2),
+                    unitSystem
+                  )}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Thighs */}
+            {clientLatestMeasurements?.thighsCm || clientLatestMeasurements?.thighsLCm || clientLatestMeasurements?.thighsRCm ? (
+              <View
+                style={[
+                  styles.measureTile,
+                  { backgroundColor: theme.cardInner, borderColor: theme.border },
+                ]}
+              >
+                <View style={styles.measureTileHeader}>
+                  <Ionicons name="fitness-outline" size={14} color={theme.textSecondary} />
+                  <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>THIGHS</Text>
+                </View>
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {formatLength(
+                    clientLatestMeasurements.thighsCm ||
+                      Math.round(((clientLatestMeasurements.thighsLCm || 0) + (clientLatestMeasurements.thighsRCm || 0)) / 2),
+                    unitSystem
+                  )}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -641,11 +868,11 @@ export default function ClientInspectionDetailScreen() {
         >
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Transformation Photo Check-ins</Text>
 
-          {checkinPhotos.length === 0 ? (
+          {clientCheckinPhotos.length === 0 ? (
             <Text style={[styles.emptyPhotoText, { color: theme.textMuted }]}>No transformation photos uploaded yet.</Text>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
-              {checkinPhotos.map((photo) => (
+              {clientCheckinPhotos.map((photo) => (
                 <View
                   key={photo.id}
                   style={[
@@ -654,33 +881,10 @@ export default function ClientInspectionDetailScreen() {
                   ]}
                 >
                   <View style={{ position: 'relative' }}>
-                    <Image source={{ uri: photo.photoUrl }} style={styles.photoImg} />
-                    <TouchableOpacity
-                      style={styles.deletePhotoBadge}
-                      onPress={() => {
-                        if (Platform.OS === 'web') {
-                          const confirmDelete = window.confirm('Are you sure you want to remove this transformation photo?');
-                          if (confirmDelete) {
-                            deleteCheckinPhoto(photo.id);
-                          }
-                        } else {
-                          Alert.alert(
-                            'Delete Check-In Photo',
-                            'Are you sure you want to remove this transformation photo?',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              { text: 'Delete', style: 'destructive', onPress: () => deleteCheckinPhoto(photo.id) },
-                            ]
-                          );
-                        }
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="trash-outline" size={14} color={theme.danger} />
-                    </TouchableOpacity>
+                    <Image source={{ uri: photo.photo_url || photo.photoUrl }} style={styles.photoImg} />
                   </View>
                   <Text style={[styles.photoDate, { color: theme.textSecondary }]}>
-                    {new Date(photo.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    {new Date(photo.created_at || photo.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                   </Text>
                 </View>
               ))}
@@ -1071,25 +1275,31 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     marginTop: 2,
   },
-  prGrid: {
+  measurementsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
-  prTile: {
+  measureTile: {
+    width: '48%',
     borderRadius: 14,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
   },
-  prExercise: {
-    fontSize: 12,
-    fontWeight: '600',
+  measureTileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
-  prValue: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginVertical: 2,
-  },
-  prFormula: {
+  measureTileLabel: {
     fontSize: 10.5,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  measureTileVal: {
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   emptyPhotoText: {
     fontSize: 12,

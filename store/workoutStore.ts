@@ -127,22 +127,74 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   fetchWorkoutData: async (userId: string) => {
     set({ isLoading: true });
     try {
-      const [logsRes, prsRes] = await Promise.all([
-        supabase.from('workout_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        supabase.from('personal_records').select('*').eq('user_id', userId)
+      const role = useAuthStore.getState().role;
+
+      const [logsRes, prsRes, plansRes, assignmentsRes] = await Promise.all([
+        supabase.from('workout_logs').select(`
+          *,
+          workout_log_sets (*)
+        `).eq('user_id', userId).order('created_at', { ascending: false }),
+        supabase.from('personal_records').select('*').eq('user_id', userId),
+        supabase.from('workout_plans').select(`
+          id,
+          title,
+          created_by,
+          created_at,
+          workout_plan_days (
+            id,
+            day_name,
+            day_order,
+            workout_plan_exercises (
+              id,
+              exercise_id,
+              exercise_name,
+              target_sets,
+              target_reps,
+              target_weight_kg
+            )
+          ),
+          workout_plan_assignments (
+            client_id,
+            trainer_id
+          )
+        `).order('created_at', { ascending: false }),
+        supabase.from('workout_plan_assignments').select('plan_id').eq('client_id', userId)
       ]);
 
-      const workoutHistory: CompletedWorkoutHeader[] = (logsRes.data || []).map(log => ({
-        id: log.id,
-        title: log.title,
-        date: log.created_at,
-        durationMinutes: log.duration_minutes,
-        totalVolumeKg: log.total_volume_kg,
-        exerciseCount: log.exercise_count,
-        // Since we don't fetch all sets yet, we just leave exerciseLogs empty for historic loads right now, 
-        // or we could fetch them if needed.
-        exerciseLogs: []
-      }));
+      const workoutHistory: CompletedWorkoutHeader[] = (logsRes.data || []).map(log => {
+        const rawSets = (log.workout_log_sets || []).filter((s: any) => s.is_completed !== false);
+        const exerciseGroupMap: Record<string, any[]> = {};
+        rawSets.forEach((s: any) => {
+          const exName = s.exercise_name || 'Exercise';
+          if (!exerciseGroupMap[exName]) exerciseGroupMap[exName] = [];
+          exerciseGroupMap[exName].push(s);
+        });
+
+        const exerciseLogs: LoggedExerciseDetail[] = Object.keys(exerciseGroupMap).map(exName => {
+          const setsArr = exerciseGroupMap[exName];
+          const totalVol = setsArr.reduce((acc: number, s: any) => acc + (Number(s.weight_kg) * Number(s.reps)), 0);
+          const maxWeight = setsArr.reduce((max: number, s: any) => Math.max(max, Number(s.weight_kg)), 0);
+          const avgReps = Math.round(setsArr.reduce((acc: number, s: any) => acc + Number(s.reps), 0) / setsArr.length);
+
+          return {
+            name: exName,
+            sets: setsArr.length,
+            reps: `${avgReps} reps`,
+            targetWeightKg: maxWeight,
+            totalVolumeKg: totalVol,
+          };
+        });
+
+        return {
+          id: log.id,
+          title: log.title,
+          date: log.created_at,
+          durationMinutes: log.duration_minutes,
+          totalVolumeKg: log.total_volume_kg,
+          exerciseCount: log.exercise_count || exerciseLogs.length,
+          exerciseLogs,
+        };
+      });
 
       const personalRecords: Record<string, any> = {};
       (prsRes.data || []).forEach(pr => {
@@ -154,33 +206,227 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         };
       });
 
-      set({ workoutHistory, personalRecords, isLoading: false });
+      const clientAssignedPlanIds = new Set((assignmentsRes.data || []).map((a: any) => a.plan_id));
+
+      const fetchedPlans: WorkoutPlan[] = (plansRes.data || [])
+        .filter((p: any) => {
+          if (role === 'TRAINER') {
+            return p.created_by === userId || (p.workout_plan_assignments || []).some((a: any) => a.trainer_id === userId);
+          } else {
+            return p.created_by === userId || clientAssignedPlanIds.has(p.id);
+          }
+        })
+        .map((p: any) => {
+          const days: PlanDay[] = (p.workout_plan_days || [])
+            .sort((a: any, b: any) => (a.day_order || 0) - (b.day_order || 0))
+            .map((d: any) => ({
+              id: d.id,
+              dayName: d.day_name,
+              exercises: (d.workout_plan_exercises || []).map((ex: any) => ({
+                exerciseId: ex.exercise_id,
+                name: ex.exercise_name,
+                targetSets: ex.target_sets,
+                targetReps: ex.target_reps,
+                targetWeightKg: Number(ex.target_weight_kg) || 0,
+              })),
+            }));
+
+          const assignedClientIds = (p.workout_plan_assignments || []).map((a: any) => a.client_id);
+
+          return {
+            id: p.id,
+            title: p.title,
+            createdBy: p.created_by,
+            isAssignedToClient: assignedClientIds.length > 0,
+            assignedClientIds,
+            days,
+          };
+        });
+
+      set({
+        workoutHistory,
+        personalRecords,
+        savedPlans: fetchedPlans.length > 0 ? fetchedPlans : get().savedPlans,
+        isLoading: false,
+      });
     } catch (e) {
       console.warn('Failed to fetch workout data', e);
       set({ isLoading: false });
     }
   },
 
-  createPlan: (planData, assignedClientIds) => {
+  createPlan: async (planData, assignedClientIds) => {
+    const clientsList = assignedClientIds || planData.assignedClientIds || [];
+    const tempId = 'plan_' + Date.now();
+
+    let userId = useAuthStore.getState().profile?.id;
+    if (!userId) {
+      const { data: authData } = await supabase.auth.getUser();
+      userId = authData?.user?.id;
+    }
+
     const newPlan: WorkoutPlan = {
       ...planData,
-      id: 'plan_' + Date.now(),
-      assignedClientIds: assignedClientIds || planData.assignedClientIds || [],
+      id: tempId,
+      assignedClientIds: clientsList,
+      isAssignedToClient: clientsList.length > 0 || planData.isAssignedToClient || false,
     };
+
     set((state) => ({
       savedPlans: [newPlan, ...state.savedPlans],
     }));
+
+    if (userId) {
+      try {
+        const { data: insertedPlan, error: planErr } = await supabase
+          .from('workout_plans')
+          .insert({
+            title: planData.title,
+            created_by: userId,
+          })
+          .select('id')
+          .single();
+
+        if (planErr || !insertedPlan) {
+          console.error('Failed inserting workout_plan into Supabase:', planErr);
+          return;
+        }
+
+        const realPlanId = insertedPlan.id;
+
+        for (let dayIdx = 0; dayIdx < planData.days.length; dayIdx++) {
+          const day = planData.days[dayIdx];
+          const { data: insertedDay, error: dayErr } = await supabase
+            .from('workout_plan_days')
+            .insert({
+              plan_id: realPlanId,
+              day_name: day.dayName,
+              day_order: dayIdx + 1,
+            })
+            .select('id')
+            .single();
+
+          if (dayErr) {
+            console.error('Failed inserting workout_plan_days into Supabase:', dayErr);
+          }
+
+          if (insertedDay && day.exercises && day.exercises.length > 0) {
+            const exPayloads = day.exercises.map((ex) => ({
+              day_id: insertedDay.id,
+              exercise_id: ex.exerciseId,
+              exercise_name: ex.name,
+              target_sets: ex.targetSets,
+              target_reps: ex.targetReps || '8-10',
+              target_weight_kg: ex.targetWeightKg || 0,
+            }));
+            const { error: exErr } = await supabase.from('workout_plan_exercises').insert(exPayloads);
+            if (exErr) {
+              console.error('Failed inserting workout_plan_exercises into Supabase:', exErr);
+            }
+          }
+        }
+
+        if (clientsList.length > 0) {
+          const assignPayloads = clientsList.map((cId) => ({
+            plan_id: realPlanId,
+            trainer_id: userId,
+            client_id: cId,
+          }));
+          const { error: assignErr } = await supabase.from('workout_plan_assignments').insert(assignPayloads);
+          if (assignErr) {
+            console.error('Failed inserting workout_plan_assignments into Supabase:', assignErr);
+          }
+        }
+
+        set((state) => ({
+          savedPlans: state.savedPlans.map((p) =>
+            p.id === tempId ? { ...p, id: realPlanId } : p
+          ),
+        }));
+      } catch (err) {
+        console.error('Error persisting workout plan to Supabase:', err);
+      }
+    } else {
+      console.warn('Cannot persist workout_plan to Supabase: No active authenticated user ID found.');
+    }
   },
 
-  updatePlan: (planId, updates) =>
+  updatePlan: async (planId, updates) => {
+    const isAssignedNow = (updates.assignedClientIds && updates.assignedClientIds.length > 0) || updates.isAssignedToClient;
+    const currentActiveId = get().activePlanId;
+    const currentRole = useAuthStore.getState().role;
+
     set((state) => ({
       savedPlans: state.savedPlans.map((p) => (p.id === planId ? { ...p, ...updates } : p)),
-    })),
+      activePlanId: (isAssignedNow && currentActiveId === planId && currentRole === 'TRAINER') ? null : state.activePlanId,
+    }));
 
-  deletePlan: (planId) =>
+    const userId = useAuthStore.getState().profile?.id;
+    if (!userId || planId.startsWith('plan_')) return;
+
+    try {
+      if (updates.title) {
+        await supabase.from('workout_plans').update({ title: updates.title }).eq('id', planId);
+      }
+
+      if (updates.days) {
+        await supabase.from('workout_plan_days').delete().eq('plan_id', planId);
+
+        for (let dayIdx = 0; dayIdx < updates.days.length; dayIdx++) {
+          const day = updates.days[dayIdx];
+          const { data: insertedDay } = await supabase
+            .from('workout_plan_days')
+            .insert({
+              plan_id: planId,
+              day_name: day.dayName,
+              day_order: dayIdx + 1,
+            })
+            .select('id')
+            .single();
+
+          if (insertedDay && day.exercises && day.exercises.length > 0) {
+            const exPayloads = day.exercises.map((ex) => ({
+              day_id: insertedDay.id,
+              exercise_id: ex.exerciseId,
+              exercise_name: ex.name,
+              target_sets: ex.targetSets,
+              target_reps: ex.targetReps || '8-10',
+              target_weight_kg: ex.targetWeightKg || 0,
+            }));
+            await supabase.from('workout_plan_exercises').insert(exPayloads);
+          }
+        }
+      }
+
+      if (updates.assignedClientIds !== undefined) {
+        await supabase.from('workout_plan_assignments').delete().eq('plan_id', planId);
+        if (updates.assignedClientIds.length > 0) {
+          const assignPayloads = updates.assignedClientIds.map((cId) => ({
+            plan_id: planId,
+            trainer_id: userId,
+            client_id: cId,
+          }));
+          await supabase.from('workout_plan_assignments').insert(assignPayloads);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed updating workout plan in Supabase:', e);
+    }
+  },
+
+  deletePlan: async (planId) => {
     set((state) => ({
       savedPlans: state.savedPlans.filter((p) => p.id !== planId),
-    })),
+    }));
+
+    if (!planId.startsWith('plan_')) {
+      try {
+        await supabase.from('workout_plans').delete().eq('id', planId);
+      } catch (e) {
+        console.warn('Failed deleting workout plan from Supabase:', e);
+      }
+    }
+  },
 
   startSession: (plan, dayIndex) => {
     const targetDayIndex =
@@ -413,28 +659,26 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       });
     });
 
-    // Filter to only include exercises with at least 1 completed set
-    const completedExercises = active.exercises.filter((ex) =>
+    // Filter to strictly include ONLY exercises with at least 1 completed set
+    const exercisesToLog = active.exercises.filter((ex) =>
       ex.sets.some((s) => s.isCompleted)
     );
-    const exercisesToLog = completedExercises.length > 0 ? completedExercises : active.exercises;
 
     const exerciseLogs: LoggedExerciseDetail[] = exercisesToLog.map((ex) => {
       const completedSets = ex.sets.filter((s) => s.isCompleted);
-      const setsToUse = completedSets.length > 0 ? completedSets : ex.sets;
-      const totalExVolume = setsToUse.reduce((acc, s) => acc + s.weightKg * s.reps, 0);
-      const maxWeight = setsToUse.reduce((max, s) => Math.max(max, s.weightKg), 0);
+      const totalExVolume = completedSets.reduce((acc, s) => acc + s.weightKg * s.reps, 0);
+      const maxWeight = completedSets.reduce((max, s) => Math.max(max, s.weightKg), 0);
       const avgReps =
-        setsToUse.length > 0
-          ? Math.round(setsToUse.reduce((acc, s) => acc + s.reps, 0) / setsToUse.length)
-          : 10;
+        completedSets.length > 0
+          ? Math.round(completedSets.reduce((acc, s) => acc + s.reps, 0) / completedSets.length)
+          : 0;
 
       return {
         name: ex.exerciseName,
-        sets: setsToUse.length,
+        sets: completedSets.length,
         reps: `${avgReps} reps`,
-        targetWeightKg: maxWeight || 20,
-        totalVolumeKg: totalExVolume || maxWeight * 10,
+        targetWeightKg: maxWeight,
+        totalVolumeKg: totalExVolume,
       };
     });
 
@@ -474,7 +718,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     if (userId) {
       const logPayload = {
         user_id: userId,
-        plan_id: null, // Skipping plan_id relational map for simplicity right now
+        plan_id: null,
         title: header.title,
         duration_minutes: header.durationMinutes,
         total_volume_kg: header.totalVolumeKg,
@@ -487,10 +731,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           if (error) {
              queueOfflineTransaction('FINISH_WORKOUT', logPayload);
           } else if (data) {
-             // Successfully inserted workout header, now insert sets
+             // Successfully inserted workout header, now insert only completed sets
              const setPayloads: any[] = [];
              exercisesToLog.forEach(ex => {
-               ex.sets.forEach(s => {
+               ex.sets.filter(s => s.isCompleted).forEach(s => {
                   setPayloads.push({
                      workout_log_id: data.id,
                      exercise_id: ex.exerciseId,
@@ -498,7 +742,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
                      set_number: s.setNumber,
                      weight_kg: s.weightKg,
                      reps: s.reps,
-                     is_completed: s.isCompleted
+                     is_completed: true
                   });
                });
              });

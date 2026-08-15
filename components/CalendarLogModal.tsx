@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -12,8 +12,11 @@ import { useAuthStore } from '../store/authStore';
 import { useNutritionStore } from '../store/nutritionStore';
 import { useTrainerStore } from '../store/trainerStore';
 import { useTheme } from '../lib/theme';
-import { formatWeight, formatLength } from '../lib/units';
+import { formatWeight, formatLength, formatVolume } from '../lib/units';
 
+import { supabase } from '../lib/supabase';
+import { CompletedWorkoutHeader } from '../store/workoutStore';
+import { MealEntry } from '../store/nutritionStore';
 import { useWorkoutStore } from '../store/workoutStore';
 import { useProgressStore } from '../store/progressStore';
 
@@ -22,18 +25,179 @@ interface CalendarLogModalProps {
   onClose: () => void;
 }
 
+const toLocalYYYYMMDD = (isoOrDateStr?: string | number | Date) => {
+  if (!isoOrDateStr) return '';
+  const d = new Date(isoOrDateStr);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onClose }) => {
-  const { role, unitSystem } = useAuthStore();
+  const { profile, role, unitSystem } = useAuthStore();
   const selectedDate = useNutritionStore((state) => state.selectedDate);
   const theme = useTheme();
 
+  const fetchWorkoutData = useWorkoutStore((state) => state.fetchWorkoutData);
   const workoutHistory = useWorkoutStore((state) => state.workoutHistory);
+  const allMeals = useNutritionStore((state) => state.allMeals);
   const todayMeals = useNutritionStore((state) => state.todayMeals);
+  const fetchAllMeals = useNutritionStore((state) => state.fetchAllMeals);
   const weightHistory = useProgressStore((state) => state.weightHistory);
   const checkinPhotos = useProgressStore((state) => state.checkinPhotos);
+  const checkinLogs = useProgressStore((state) => state.checkinLogs);
+  const clients = useTrainerStore((state) => state.clients);
 
   const [activeDate, setActiveDate] = useState(selectedDate);
-  const [selectedClient, setSelectedClient] = useState<string>('All Clients');
+  const [selectedClient, setSelectedClient] = useState<string>('Self');
+
+  const [clientLogs, setClientLogs] = useState<{
+    workouts: CompletedWorkoutHeader[];
+    meals: MealEntry[];
+    weightHistory: any[];
+    checkins: any[];
+  }>({
+    workouts: [],
+    meals: [],
+    weightHistory: [],
+    checkins: [],
+  });
+  const [isLoadingClientLogs, setIsLoadingClientLogs] = useState(false);
+
+  useEffect(() => {
+    if (visible && profile?.id) {
+      fetchWorkoutData(profile.id);
+      fetchAllMeals(profile.id);
+    }
+  }, [visible, profile?.id]);
+
+  useEffect(() => {
+    if (selectedClient === 'Self' || !visible) return;
+    const clientObj = clients.find((c) => c.fullName === selectedClient || c.clientId === selectedClient);
+    if (!clientObj) return;
+
+    let isMounted = true;
+    setIsLoadingClientLogs(true);
+
+    const fetchClientData = async () => {
+      try {
+        const cId = clientObj.clientId;
+        const [wRes, mRes, weightRes, checkinRes] = await Promise.all([
+          supabase
+            .from('workout_logs')
+            .select('*, workout_log_sets(*)')
+            .eq('user_id', cId)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('meals')
+            .select('*, meal_items(*)')
+            .eq('user_id', cId)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('weight_history')
+            .select('*')
+            .eq('user_id', cId)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('checkin_logs')
+            .select('*')
+            .eq('user_id', cId)
+            .order('created_at', { ascending: false }),
+        ]);
+
+        if (!isMounted) return;
+
+        const workouts: CompletedWorkoutHeader[] = (wRes.data || []).map((log) => {
+          const rawSets = (log.workout_log_sets || []).filter((s: any) => s.is_completed !== false);
+          const exerciseGroupMap: Record<string, any[]> = {};
+          rawSets.forEach((s: any) => {
+            const exName = s.exercise_name || 'Exercise';
+            if (!exerciseGroupMap[exName]) exerciseGroupMap[exName] = [];
+            exerciseGroupMap[exName].push(s);
+          });
+
+          const exerciseLogs = Object.keys(exerciseGroupMap).map((exName) => {
+            const setsArr = exerciseGroupMap[exName];
+            const totalVol = setsArr.reduce((acc: number, s: any) => acc + Number(s.weight_kg) * Number(s.reps), 0);
+            const maxWeight = setsArr.reduce((max: number, s: any) => Math.max(max, Number(s.weight_kg)), 0);
+            const avgReps = Math.round(setsArr.reduce((acc: number, s: any) => acc + Number(s.reps), 0) / setsArr.length);
+
+            return {
+              name: exName,
+              sets: setsArr.length,
+              reps: `${avgReps} reps`,
+              targetWeightKg: maxWeight,
+              totalVolumeKg: totalVol,
+            };
+          });
+
+          return {
+            id: log.id,
+            title: log.title,
+            date: log.created_at,
+            durationMinutes: log.duration_minutes,
+            totalVolumeKg: log.total_volume_kg,
+            exerciseCount: log.exercise_count || exerciseLogs.length,
+            exerciseLogs,
+          };
+        });
+
+        const meals: MealEntry[] = (mRes.data || []).map((m) => ({
+          id: m.id,
+          userId: m.user_id,
+          dishName: m.dish_name,
+          category: m.category as any,
+          timestamp: m.created_at,
+          photoUrl: m.photo_url,
+          totalCalories: m.total_calories,
+          totalProteinG: m.total_protein_g,
+          totalCarbsG: m.total_carbs_g,
+          totalFatG: m.total_fat_g,
+          items: (m.meal_items || []).map((i: any) => ({
+            id: i.id,
+            name: i.name,
+            quantity: i.quantity,
+            calories: i.calories,
+            proteinG: i.protein_g,
+            carbsG: i.carbs_g,
+            fatG: i.fat_g,
+          })),
+        }));
+
+        const weightHist = (weightRes.data || []).map((w: any) => ({
+          id: w.id,
+          date: w.created_at,
+          weightKg: w.weight_kg,
+        }));
+
+        const checkins = (checkinRes.data || []).map((c: any) => ({
+          id: c.id,
+          date: c.created_at,
+          weightKg: c.weight_kg,
+          measurements: c.measurements,
+        }));
+
+        setClientLogs({
+          workouts,
+          meals,
+          weightHistory: weightHist,
+          checkins,
+        });
+        setIsLoadingClientLogs(false);
+      } catch (err) {
+        console.warn('Error fetching client logs:', err);
+        if (isMounted) setIsLoadingClientLogs(false);
+      }
+    };
+
+    fetchClientData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedClient, visible, clients]);
 
   // Accordion expansion states for granular inspection
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -48,20 +212,41 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
     }));
   };
 
-  // Compute set of logged dates in YYYY-MM-DD format
+  const selfMeals = allMeals && allMeals.length > 0 ? allMeals : todayMeals;
+
+  const activeWorkouts = selectedClient === 'Self' ? workoutHistory : clientLogs.workouts;
+  const activeMeals = selectedClient === 'Self' ? selfMeals : clientLogs.meals;
+  const activeWeightHistory = selectedClient === 'Self' ? weightHistory : clientLogs.weightHistory;
+  const activeCheckinLogs = selectedClient === 'Self' ? checkinLogs : clientLogs.checkins;
+
+  // Compute set of logged dates in local YYYY-MM-DD format
   const loggedDatesSet = new Set<string>();
-  workoutHistory.forEach((w) => {
-    if (w.date) loggedDatesSet.add(new Date(w.date).toISOString().split('T')[0]);
+  activeWorkouts.forEach((w) => {
+    if (w.date) {
+      const dStr = toLocalYYYYMMDD(w.date);
+      if (dStr) loggedDatesSet.add(dStr);
+    }
   });
-  todayMeals.forEach((m) => {
-    if (m.timestamp) loggedDatesSet.add(new Date(m.timestamp).toISOString().split('T')[0]);
+  activeMeals.forEach((m: any) => {
+    if (m.timestamp) {
+      const dStr = toLocalYYYYMMDD(m.timestamp);
+      if (dStr) loggedDatesSet.add(dStr);
+    }
   });
-  weightHistory.forEach((wh) => {
-    if (wh.date) loggedDatesSet.add(new Date(wh.date).toISOString().split('T')[0]);
+  activeWeightHistory.forEach((wh) => {
+    if (wh.date) {
+      const dStr = toLocalYYYYMMDD(wh.date);
+      if (dStr) loggedDatesSet.add(dStr);
+    }
   });
-  checkinPhotos.forEach((cp) => {
-    if (cp.date) loggedDatesSet.add(new Date(cp.date).toISOString().split('T')[0]);
-  });
+  if (selectedClient === 'Self') {
+    checkinPhotos.forEach((cp) => {
+      if (cp.date) {
+        const dStr = toLocalYYYYMMDD(cp.date);
+        if (dStr) loggedDatesSet.add(dStr);
+      }
+    });
+  }
 
   // Helper to parse date string YYYY-MM-DD safely into local time Date object
   const parseYYYYMMDD = (dateStr: string) => {
@@ -104,14 +289,14 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
     setActiveDate(formattedDate);
   };
 
-  const dayWorkouts = workoutHistory.filter((w) => {
+  const dayWorkouts = activeWorkouts.filter((w) => {
     if (!w.date) return false;
-    return new Date(w.date).toISOString().split('T')[0] === activeDate;
+    return toLocalYYYYMMDD(w.date) === activeDate;
   });
 
-  const dayMeals = todayMeals.filter((m) => {
+  const dayMeals = activeMeals.filter((m: any) => {
     if (!m.timestamp) return false;
-    return new Date(m.timestamp).toISOString().split('T')[0] === activeDate;
+    return toLocalYYYYMMDD(m.timestamp) === activeDate;
   });
 
   const formattedActiveDateLabel = new Date(activeDate).toLocaleDateString([], {
@@ -122,15 +307,14 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
   });
 
   // Calculate dynamic weight/health metrics for activeDate
-  const dayWeightLog = weightHistory.find((wh) => {
+  const dayWeightLog = activeWeightHistory.find((wh) => {
     if (!wh.date) return false;
-    return new Date(wh.date).toISOString().split('T')[0] === activeDate;
+    return toLocalYYYYMMDD(wh.date) === activeDate;
   });
 
-  const checkinLogs = useProgressStore((state) => state.checkinLogs);
-  const dayCheckin = checkinLogs.find((cl) => {
+  const dayCheckin = activeCheckinLogs.find((cl) => {
     if (!cl.date) return false;
-    return new Date(cl.date).toISOString().split('T')[0] === activeDate;
+    return toLocalYYYYMMDD(cl.date) === activeDate;
   });
 
   const dayWeightLogVal = dayWeightLog?.weightKg || dayCheckin?.weightKg;
@@ -233,7 +417,7 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
                   FILTER CLIENT LOGS (TRAINER MODE)
                 </Text>
                 <View style={styles.clientPillsRow}>
-                  {['All Clients', ...useTrainerStore.getState().clients.map((c) => c.fullName)].map((client) => {
+                  {['Self', ...clients.map((c) => c.fullName)].map((client) => {
                     const isActive = selectedClient === client;
                     return (
                       <TouchableOpacity
@@ -522,12 +706,12 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
                     {dayWorkouts.map((w, wIdx) => (
                       <View key={w.id || wIdx} style={[styles.exerciseItem, { backgroundColor: theme.cardInner }]}>
                         <Text style={[styles.exerciseName, { color: theme.text }]}>
-                          {wIdx + 1}. {w.title} ({w.durationMinutes}m • {w.totalVolumeKg} kg)
+                          {wIdx + 1}. {w.title} ({w.durationMinutes}m • {formatVolume(w.totalVolumeKg, unitSystem)})
                         </Text>
                         {w.exerciseLogs && w.exerciseLogs.length > 0 ? (
                           w.exerciseLogs.map((ex, exIdx) => (
                             <Text key={exIdx} style={[styles.setDetailText, { color: theme.textSecondary }]}>
-                              • {ex.name}: {ex.sets} set(s) completed ({ex.totalVolumeKg} kg)
+                              • {ex.name}: {ex.sets} set(s) completed ({formatVolume(ex.totalVolumeKg, unitSystem)})
                             </Text>
                           ))
                         ) : (
@@ -609,12 +793,12 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
 
                 {expandedSections['nutrition'] && dayMeals.length > 0 && (
                   <View style={[styles.granularBox, { borderTopColor: theme.border }]}>
-                    {dayMeals.map((m, mIdx) => (
+                    {dayMeals.map((m: any, mIdx: number) => (
                       <View key={m.id || mIdx} style={[styles.exerciseItem, { backgroundColor: theme.cardInner }]}>
                         <Text style={[styles.exerciseName, { color: theme.text }]}>
                           {mIdx + 1}. {m.dishName} ({m.totalCalories} kcal • {m.totalProteinG}g P • {m.totalCarbsG}g C • {m.totalFatG}g F)
                         </Text>
-                        {m.items.map((item, itemIdx) => (
+                        {(m.items || []).map((item: any, itemIdx: number) => (
                           <Text key={itemIdx} style={[styles.setDetailText, { color: theme.textSecondary }]}>
                             • {item.name} ({item.quantity}): {item.calories} kcal
                           </Text>

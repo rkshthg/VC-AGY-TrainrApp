@@ -107,6 +107,71 @@ CREATE POLICY "Meal items insert own" ON trainr.meal_items
     )
   );
 
+-- Workout Plans
+DROP POLICY IF EXISTS "Workout plans select" ON trainr.workout_plans;
+DROP POLICY IF EXISTS "Workout plans insert update delete" ON trainr.workout_plans;
+
+CREATE POLICY "Workout plans select" ON trainr.workout_plans
+  FOR SELECT USING (
+    auth.uid() = created_by 
+    OR id IN (SELECT plan_id FROM trainr.workout_plan_assignments WHERE client_id = auth.uid() OR trainer_id = auth.uid())
+  );
+
+CREATE POLICY "Workout plans insert update delete" ON trainr.workout_plans
+  FOR ALL USING (auth.uid() = created_by);
+
+-- Workout Plan Days
+DROP POLICY IF EXISTS "Workout plan days select" ON trainr.workout_plan_days;
+DROP POLICY IF EXISTS "Workout plan days insert update delete" ON trainr.workout_plan_days;
+
+CREATE POLICY "Workout plan days select" ON trainr.workout_plan_days
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM trainr.workout_plans
+      WHERE workout_plans.id = workout_plan_days.plan_id
+      AND (
+        workout_plans.created_by = auth.uid() 
+        OR workout_plans.id IN (SELECT plan_id FROM trainr.workout_plan_assignments WHERE client_id = auth.uid() OR trainer_id = auth.uid())
+      )
+    )
+  );
+
+CREATE POLICY "Workout plan days insert update delete" ON trainr.workout_plan_days
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM trainr.workout_plans
+      WHERE workout_plans.id = workout_plan_days.plan_id
+      AND workout_plans.created_by = auth.uid()
+    )
+  );
+
+-- Workout Plan Exercises
+DROP POLICY IF EXISTS "Workout plan exercises select" ON trainr.workout_plan_exercises;
+DROP POLICY IF EXISTS "Workout plan exercises insert update delete" ON trainr.workout_plan_exercises;
+
+CREATE POLICY "Workout plan exercises select" ON trainr.workout_plan_exercises
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM trainr.workout_plan_days
+      JOIN trainr.workout_plans ON workout_plans.id = workout_plan_days.plan_id
+      WHERE workout_plan_days.id = workout_plan_exercises.day_id
+      AND (
+        workout_plans.created_by = auth.uid()
+        OR workout_plans.id IN (SELECT plan_id FROM trainr.workout_plan_assignments WHERE client_id = auth.uid() OR trainer_id = auth.uid())
+      )
+    )
+  );
+
+CREATE POLICY "Workout plan exercises insert update delete" ON trainr.workout_plan_exercises
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM trainr.workout_plan_days
+      JOIN trainr.workout_plans ON workout_plans.id = workout_plan_days.plan_id
+      WHERE workout_plan_days.id = workout_plan_exercises.day_id
+      AND workout_plans.created_by = auth.uid()
+    )
+  );
+
 -- Workout Plan Assignments
 CREATE POLICY "Workout plan assignments select" ON trainr.workout_plan_assignments
   FOR SELECT USING (auth.uid() = client_id OR auth.uid() = trainer_id);
