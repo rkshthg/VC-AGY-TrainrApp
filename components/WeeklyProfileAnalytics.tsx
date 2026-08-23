@@ -5,6 +5,7 @@ import { useTheme } from '../lib/theme';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { formatVolume, getWeightUnitLabel, convertWeight } from '../lib/units';
+import logger from '../lib/logger';
 
 export type WorkoutMetricFilter = 'VOLUME' | 'DURATION' | 'REPS';
 export type NutritionMetricFilter = 'CALORIES' | 'PROTEIN';
@@ -68,7 +69,7 @@ export const WeeklyProfileAnalytics: React.FC<WeeklyProfileAnalyticsProps> = ({ 
         if (workoutsRes.data) setWorkouts(workoutsRes.data);
         if (mealsRes.data) setMeals(mealsRes.data);
       } catch (e) {
-        console.warn('Failed to load analytics data:', e);
+        logger.warn('Failed to load analytics data:', e);
       } finally {
         setLoading(false);
       }

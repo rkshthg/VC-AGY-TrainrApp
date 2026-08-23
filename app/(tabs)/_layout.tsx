@@ -3,8 +3,10 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
+import { useScreenPrivacy } from '../../lib/useScreenPrivacy';
 
 export default function TabLayout() {
+  useScreenPrivacy();
   const role = useAuthStore((state) => state.role);
   const theme = useTheme();
 

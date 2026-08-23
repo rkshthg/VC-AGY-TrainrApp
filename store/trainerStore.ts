@@ -3,6 +3,7 @@ import { TagPill } from '../components/ClientActivityCard';
 import { supabase } from '../lib/supabase';
 import { queueOfflineTransaction } from '../lib/offlineSync';
 import { useAuthStore } from './authStore';
+import logger from '../lib/logger';
 
 export interface ClientSummaryCard {
   clientId: string;
@@ -180,7 +181,7 @@ export const useTrainerStore = create<TrainerState>((set, get) => ({
 
       set({ clients: parsedClients, liveFeedCards: parsedFeed, isLoading: false });
     } catch (e) {
-       console.warn('Failed to fetch roster', e);
+       logger.warn('Failed to fetch roster', e);
        set({ isLoading: false });
     }
   },

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { Platform, Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import logger from '../lib/logger';
+import { secureSetProfile, secureGetProfile, secureRemoveProfile } from '../lib/secureProfileCache';
 
 export interface UserProfile {
   id: string;
@@ -102,8 +104,24 @@ const showAlert = (title: string, message: string) => {
   }
 };
 
+/** Allowed URL schemes for deep link auth processing. */
+const ALLOWED_AUTH_SCHEMES = ['trainr://', 'com.trainr.trainrapp://', 'com.anonymous.trainrapp://'];
+
+/**
+ * Parse and validate an auth callback URL, then exchange it for a Supabase session.
+ * SECURITY: Only accepts URLs with registered app schemes to prevent injection.
+ */
 const createSessionFromUrl = async (url: string) => {
   if (!url) return null;
+
+  // Validate URL scheme — only accept our registered deep link schemes
+  const lowerUrl = url.toLowerCase();
+  const isAllowedScheme = ALLOWED_AUTH_SCHEMES.some(scheme => lowerUrl.startsWith(scheme));
+  if (!isAllowedScheme && !lowerUrl.startsWith('https://')) {
+    logger.warn('Rejected deep link with unrecognized scheme:', url.substring(0, 50));
+    return null;
+  }
+
   let paramsString = '';
   if (url.includes('#')) {
     paramsString = url.split('#')[1];
@@ -171,12 +189,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         supabase.from('users').update({ theme_mode: themeMode }).eq('id', currentProfile.id).then();
         const updatedProfile = { ...currentProfile, themeMode };
         set({ profile: updatedProfile });
-        await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+        await secureSetProfile(updatedProfile);
       } else {
         await AsyncStorage.setItem('@trainr_theme_mode', themeMode);
       }
     } catch (e) {
-      console.warn('Failed to save theme mode:', e);
+      logger.warn('Failed to save theme mode:', e);
     }
   },
 
@@ -188,12 +206,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         supabase.from('users').update({ unit_system: unitSystem }).eq('id', currentProfile.id).then();
         const updatedProfile = { ...currentProfile, unitSystem };
         set({ profile: updatedProfile });
-        await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+        await secureSetProfile(updatedProfile);
       } else {
         await AsyncStorage.setItem('@trainr_unit_system', unitSystem);
       }
     } catch (e) {
-      console.warn('Failed to save unit system:', e);
+      logger.warn('Failed to save unit system:', e);
     }
   },
 
@@ -240,11 +258,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (error) {
-        console.warn('Failed to fetch profile from Supabase:', error.message);
-        // Fallback to local storage if offline
-        const cached = await AsyncStorage.getItem('@trainr_profile');
+        logger.warn('Failed to fetch profile from Supabase:', error.message);
+        // Fallback to secure local cache if offline
+        const cached = await secureGetProfile();
         if (cached) {
-          get().setProfile(JSON.parse(cached));
+          get().setProfile(cached);
           set({ isLoading: false });
           return true;
         }
@@ -254,13 +272,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (data) {
         const profile = mapDbToProfile(data);
-        await AsyncStorage.setItem('@trainr_profile', JSON.stringify(profile));
+        await secureSetProfile(profile);
         get().setProfile(profile);
         set({ isLoading: false });
         return true;
       }
     } catch (e) {
-      console.warn('Error fetching profile:', e);
+      logger.warn('Error fetching profile:', e);
     }
     set({ isLoading: false });
     return false;
@@ -293,7 +311,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }, { onConflict: 'trainer_id,client_id' });
 
       if (linkError) {
-        console.warn('Failed linking in trainer_clients:', linkError);
+        logger.warn('Failed linking in trainer_clients:', linkError);
         showAlert('Link Error', linkError.message);
         return false;
       }
@@ -304,7 +322,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .eq('id', currentProfile.id);
 
       if (profileLinkError) {
-        console.warn('Failed updating profile link:', profileLinkError);
+        logger.warn('Failed updating profile link:', profileLinkError);
         showAlert('Link Error', profileLinkError.message);
         return false;
       }
@@ -316,11 +334,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         linkedTrainerCode: trainer.trainer_code || cleanedCode
       };
       get().setProfile(updatedProfile as UserProfile);
-      await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+      await secureSetProfile(updatedProfile);
 
       return true;
     } catch (e) {
-      console.error('Failed to link trainer:', e);
+      logger.error('Failed to link trainer:', e);
       return false;
     }
   },
@@ -336,7 +354,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .eq('id', currentProfile.id);
 
       if (unlinkError) {
-        console.warn('Failed unlinking in profile:', unlinkError);
+        logger.warn('Failed unlinking in profile:', unlinkError);
         showAlert('Unlink Error', unlinkError.message);
         return false;
       }
@@ -348,7 +366,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .eq('client_id', currentProfile.id);
 
       if (relError) {
-        console.warn('Failed updating trainer relationship status:', relError);
+        logger.warn('Failed updating trainer relationship status:', relError);
         showAlert('Unlink Error', relError.message);
         return false;
       }
@@ -360,11 +378,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         linkedTrainerCode: undefined
       };
       get().setProfile(updatedProfile as UserProfile);
-      await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+      await secureSetProfile(updatedProfile);
       
       return true;
     } catch (e) {
-      console.error('Failed to unlink trainer:', e);
+      logger.error('Failed to unlink trainer:', e);
       return false;
     }
   },
@@ -373,10 +391,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const session = get().session;
       const { data: userData, error: getUserError } = await supabase.auth.getUser();
-      console.log('Onboarding submit - Store session user id:', session?.user?.id);
-      console.log('Onboarding submit - Client auth user id:', userData?.user?.id);
+      logger.log('Onboarding submit - Store session user id:', session?.user?.id);
+      logger.log('Onboarding submit - Client auth user id:', userData?.user?.id);
       if (getUserError) {
-        console.error('Onboarding submit - getUser error:', getUserError);
+        logger.error('Onboarding submit - getUser error:', getUserError);
       }
 
       if (!session?.user || !userData?.user) {
@@ -412,7 +430,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .single();
         
       if (userError) {
-        console.warn('Failed onboarding completion in DB (users):', userError);
+        logger.warn('Failed onboarding completion in DB (users):', userError);
         showAlert('Onboarding Error (Users)', userError.message);
         return false;
       }
@@ -431,7 +449,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }, { onConflict: 'user_id' });
           
         if (macroError) {
-          console.warn('Failed onboarding macro targets saving:', macroError);
+          logger.warn('Failed onboarding macro targets saving:', macroError);
           showAlert('Onboarding Error (Macros)', macroError.message);
           return false;
         }
@@ -457,7 +475,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             });
 
           if (measurementsError) {
-            console.warn('Failed onboarding measurements saving:', measurementsError);
+            logger.warn('Failed onboarding measurements saving:', measurementsError);
             showAlert('Onboarding Error (Measurements)', measurementsError.message);
             return false;
           }
@@ -475,19 +493,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           });
 
         if (weightError) {
-          console.warn('Failed onboarding initial weight log saving:', weightError);
+          logger.warn('Failed onboarding initial weight log saving:', weightError);
         }
       }
       
       if (updatedDb) {
         const parsed = mapDbToProfile(updatedDb);
         get().setProfile(parsed);
-        await AsyncStorage.setItem('@trainr_profile', JSON.stringify(parsed));
+        await secureSetProfile(parsed);
       }
 
       return true;
     } catch (e: any) {
-      console.error('Failed onboarding completion:', e);
+      logger.error('Failed onboarding completion:', e);
       showAlert('Onboarding Exception', e.message || 'An unexpected error occurred.');
       return false;
     }
@@ -503,7 +521,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           },
         });
         if (error) {
-           console.warn('Supabase OAuth notice:', error.message);
+           logger.warn('Supabase OAuth notice:', error.message);
            return false;
         }
         // Browser will redirect to Google Auth. Hang the promise so we don't execute further.
@@ -536,7 +554,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             return false;
           }
         } catch (err) {
-          console.warn('Native WebBrowser notice:', err);
+          logger.warn('Native WebBrowser notice:', err);
           return false;
         }
       }
@@ -558,20 +576,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           };
           const { data: insertedData, error: insertError } = await supabase.from('users').insert(newProfile).select().single();
           if (insertError) {
-             console.warn('Failed to insert user profile:', insertError);
+             logger.warn('Failed to insert user profile:', insertError);
           }
           profileData = insertedData || newProfile;
         }
         
         const parsedProfile = mapDbToProfile(profileData);
         get().setProfile(parsedProfile);
-        await AsyncStorage.setItem('@trainr_profile', JSON.stringify(parsedProfile));
+        await secureSetProfile(parsedProfile);
         return true;
       }
       
       return false;
     } catch (e) {
-      console.error('Google Auth Error:', e);
+      logger.error('Google Auth Error:', e);
       return false;
     }
   },
@@ -579,7 +597,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     try {
       await supabase.auth.signOut();
-      await AsyncStorage.removeItem('@trainr_profile');
+      await secureRemoveProfile();
     } catch (e) {
       // ignore
     }
@@ -604,17 +622,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .eq('id', currentProfile.id);
 
       if (error) {
-        console.warn('Failed to update avatar url in Supabase:', error.message);
+        logger.warn('Failed to update avatar url in Supabase:', error.message);
         showAlert('Update Error', error.message);
         return false;
       }
 
       const updatedProfile = { ...currentProfile, avatarUrl: url };
       get().setProfile(updatedProfile as UserProfile);
-      await AsyncStorage.setItem('@trainr_profile', JSON.stringify(updatedProfile));
+      await secureSetProfile(updatedProfile);
       return true;
     } catch (e) {
-      console.error('Failed to update avatar url:', e);
+      logger.error('Failed to update avatar url:', e);
       return false;
     }
   },

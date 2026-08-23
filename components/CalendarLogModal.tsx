@@ -13,6 +13,7 @@ import { useNutritionStore } from '../store/nutritionStore';
 import { useTrainerStore } from '../store/trainerStore';
 import { useTheme } from '../lib/theme';
 import { formatWeight, formatLength, formatVolume } from '../lib/units';
+import logger from '../lib/logger';
 
 import { supabase } from '../lib/supabase';
 import { CompletedWorkoutHeader } from '../store/workoutStore';
@@ -187,7 +188,7 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
         });
         setIsLoadingClientLogs(false);
       } catch (err) {
-        console.warn('Error fetching client logs:', err);
+        logger.warn('Error fetching client logs:', err);
         if (isMounted) setIsLoadingClientLogs(false);
       }
     };

@@ -2,6 +2,7 @@
  * Offline Sync Queue Engine for Trainr
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import logger from './logger';
 
 const QUEUE_KEY = '@trainr_offline_queue';
 
@@ -26,7 +27,7 @@ export async function saveQueue(queue: SyncQueueItem[]) {
   try {
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
   } catch (e) {
-    console.warn('Failed to save sync queue:', e);
+    logger.warn('Failed to save sync queue:', e);
   }
 }
 

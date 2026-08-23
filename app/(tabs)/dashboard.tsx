@@ -12,6 +12,7 @@ import { useNutritionStore } from '../../store/nutritionStore';
 import { useWorkoutStore } from '../../store/workoutStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
+import logger from '../../lib/logger';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function DashboardScreen() {
         userId ? fetchWorkoutData(userId) : Promise.resolve(),
       ]);
     } catch (e) {
-      console.warn('Dashboard refresh error:', e);
+      logger.warn('Dashboard refresh error:', e);
     } finally {
       setRefreshing(false);
     }

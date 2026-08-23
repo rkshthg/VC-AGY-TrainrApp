@@ -4,6 +4,7 @@
  */
 
 import { FoodItem } from '../store/nutritionStore';
+import logger from './logger';
 
 export interface AIMealScanResult {
   dishName: string;
@@ -93,21 +94,23 @@ async function uriToBase64(uri: string): Promise<string | null> {
       reader.readAsDataURL(blob);
     });
   } catch (e) {
-    console.warn('[aiVision] Failed converting URI to base64:', e);
+    logger.warn('[aiVision] Failed converting URI to base64:', e);
     return null;
   }
 }
 
+import { supabase } from './supabase';
+
 /**
- * Analyzes a meal photo using Google Gemini Flash Vision API with local presets fallbacks.
+ * Analyzes a meal photo using secure Supabase Proxy / Backend Edge Function with local presets fallbacks.
  * Supports both direct base64 and photo URI inputs.
  */
 export async function analyzeMealImage(
   photoUriOrBase64: string,
   base64Data?: string
 ): Promise<AIMealScanResult> {
-  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-  console.log('[Gemini AI] EXPO_PUBLIC_GEMINI_API_KEY status:', apiKey ? 'Loaded successfully' : 'Not found (using Mock fallback)');
+  const proxyUrl = process.env.EXPO_PUBLIC_VISION_PROXY_URL;
+  logger.log('[AI Vision] Proxy URL status:', proxyUrl ? 'configured' : 'using Supabase Functions / fallback');
 
   let finalBase64 = base64Data;
   if (!finalBase64 && photoUriOrBase64) {
@@ -119,90 +122,46 @@ export async function analyzeMealImage(
     }
   }
 
-  // Tier 1: Cloud Gemini Vision API
-  if (apiKey && finalBase64) {
-    const modelsToTry = [
-      'gemini-flash-lite-latest', // Cheapest & fastest
-      // 'gemini-flash-latest',      // Best accuracy/cost balance
-      // 'gemini-3.5-flash',
-    ];
+  // Tier 1: Secure Backend Proxy Call (Supabase Edge Function or custom Proxy URL)
+  if (finalBase64) {
+    try {
+      // 1A. If custom proxy URL specified in .env, call it directly
+      if (proxyUrl) {
+        logger.log('[AI Vision] Invoking custom proxy URL:', proxyUrl);
+        const res = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: finalBase64 }),
+        });
 
-    const payload = {
-      contents: [
-        {
-          parts: [
-            { text: SOUTH_ASIAN_FOOD_PROMPT },
-            {
-              inline_data: {
-                mime_type: 'image/jpeg',
-                data: finalBase64,
-              },
-            },
-          ],
-        },
-      ],
-    };
-
-    for (const modelName of modelsToTry) {
-      try {
-        console.log(`[Gemini AI] Sending request using model: ${modelName}`);
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-goog-api-key': apiKey,
-            },
-            body: JSON.stringify(payload),
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-          if (rawText) {
-            // Clean JSON formatting
-            const cleanedText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-            const rawParsed = JSON.parse(cleanedText);
-
-            const round1 = (val: number) => Math.round(val * 10) / 10;
-
-            // Map snake_case response fields to camelCase properties expected by the frontend
-            const parsedResult: AIMealScanResult = {
-              dishName: rawParsed.dish_name || 'South Asian Meal Plate',
-              confidenceScore: round1(rawParsed.confidence_score ?? 0.85),
-              identifiedItems: (rawParsed.identified_items || []).map((item: any) => ({
-                name: item.name || '',
-                quantity: item.quantity || '',
-                calories: round1(item.calories ?? 0),
-                proteinG: round1(item.protein_g ?? 0),
-                carbsG: round1(item.carbs_g ?? 0),
-                fatG: round1(item.fat_g ?? 0),
-              })),
-              totalCalories: round1(rawParsed.total_calories ?? 0),
-              totalProteinG: round1(rawParsed.total_protein_g ?? 0),
-              totalCarbsG: round1(rawParsed.total_carbs_g ?? 0),
-              totalFatG: round1(rawParsed.total_fat_g ?? 0),
-              notes: rawParsed.notes || '',
-            };
-
-            console.log(`[Gemini AI] Successfully analyzed image with model ${modelName}`);
-            return parsedResult;
-          }
+        if (res.ok) {
+          const parsedResult: AIMealScanResult = await res.json();
+          logger.log('[AI Vision] Successfully received scan result from proxy URL');
+          return parsedResult;
         } else {
-          const errText = await response.text();
-          console.warn(`[Gemini AI] Model ${modelName} returned status ${response.status}: ${errText}`);
+          logger.warn(`[AI Vision] Custom proxy returned status ${res.status}`);
         }
-      } catch (err) {
-        console.warn(`[Gemini AI] Model ${modelName} failed, falling back:`, err);
+      } else {
+        // 1B. Invoke Supabase Edge Function 'analyze-meal' directly using Supabase client
+        logger.log('[AI Vision] Invoking Supabase Edge Function analyze-meal');
+        const { data, error } = await supabase.functions.invoke('analyze-meal', {
+          body: { imageBase64: finalBase64 },
+        });
+
+        if (!error && data && data.dishName) {
+          logger.log('[AI Vision] Successfully received scan result from Supabase Edge Function');
+          return data as AIMealScanResult;
+        } else if (error) {
+          logger.warn('[AI Vision] Supabase Edge Function invocation failed:', error.message || error);
+        }
       }
+    } catch (err) {
+      logger.warn('[AI Vision] Proxy request failed, falling back to presets:', err);
     }
   }
 
   // Tier 2: On-Device Local AI Fallback (Preset database)
-  console.log('[Gemini AI] Falling back to local meal preset database');
+  logger.log('[Gemini AI] Falling back to local meal preset database');
   await new Promise((res) => setTimeout(res, 1200)); // Simulate processing delay
 
   const seedStr = photoUriOrBase64 || 'default';

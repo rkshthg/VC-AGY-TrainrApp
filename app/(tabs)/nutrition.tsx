@@ -19,6 +19,7 @@ import { NutritionChart } from '../../components/NutritionChart';
 import { useNutritionStore } from '../../store/nutritionStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
+import logger from '../../lib/logger';
 
 export default function NutritionScreen() {
   const router = useRouter();
@@ -40,7 +41,7 @@ export default function NutritionScreen() {
         ]);
       }
     } catch (e) {
-      console.warn('Nutrition refresh error:', e);
+      logger.warn('Nutrition refresh error:', e);
     } finally {
       setRefreshing(false);
     }

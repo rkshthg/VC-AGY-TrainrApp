@@ -24,6 +24,7 @@ import { useWorkoutStore } from '../../store/workoutStore';
 import { useNutritionStore } from '../../store/nutritionStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
+import { useScreenPrivacy } from '../../lib/useScreenPrivacy';
 import {
   formatWeight,
   formatLength,
@@ -32,8 +33,10 @@ import {
   getWeightUnitLabel,
   getLengthUnitLabel,
 } from '../../lib/units';
+import logger from '../../lib/logger';
 
 export default function ProfileScreen() {
+  useScreenPrivacy();
   const { profile, role, trainerCode, linkedTrainerId, setProfile, unitSystem, unlinkTrainer, linkTrainer, updateAvatarUrl } = useAuthStore();
   const theme = useTheme();
   const {
@@ -67,7 +70,7 @@ export default function ProfileScreen() {
         ]);
       }
     } catch (e) {
-      console.warn('Profile refresh error:', e);
+      logger.warn('Profile refresh error:', e);
     } finally {
       setRefreshing(false);
     }
@@ -121,7 +124,7 @@ export default function ProfileScreen() {
         }
       }
     } catch (e) {
-      console.warn('ImagePicker error:', e);
+      logger.warn('ImagePicker error:', e);
       Alert.alert('Error', 'An error occurred while picking the image.');
     }
   };
@@ -156,7 +159,7 @@ export default function ProfileScreen() {
         }
       }
     } catch (e) {
-      console.warn('Camera error:', e);
+      logger.warn('Camera error:', e);
       Alert.alert('Error', 'An error occurred while opening the camera.');
     }
   };
@@ -234,7 +237,7 @@ export default function ProfileScreen() {
         setUploadedPhotos((prev) => [...prev, ...newUris].slice(0, 3));
       }
     } catch (e) {
-      console.warn('ImagePicker error:', e);
+      logger.warn('ImagePicker error:', e);
     }
   };
 

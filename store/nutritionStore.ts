@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { queueOfflineTransaction } from '../lib/offlineSync';
 import { useAuthStore } from './authStore';
+import logger from '../lib/logger';
 
 export interface FoodItem {
   id?: string;
@@ -124,7 +125,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
       set({ todayMeals: meals, macroTargets: targets, isLoading: false });
     } catch (e) {
-      console.warn('Failed to fetch nutrition data', e);
+      logger.warn('Failed to fetch nutrition data', e);
       set({ isLoading: false });
     }
   },
@@ -168,7 +169,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
       set({ allMeals: meals });
     } catch (e) {
-      console.warn('Failed to fetch all meals:', e);
+      logger.warn('Failed to fetch all meals:', e);
     }
   },
 

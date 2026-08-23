@@ -23,6 +23,7 @@ import { WeeklyProfileAnalytics } from '../../components/WeeklyProfileAnalytics'
 import { useTheme } from '../../lib/theme';
 import { formatWeight, formatVolume, formatHeight, formatLength } from '../../lib/units';
 import { supabase } from '../../lib/supabase';
+import logger from '../../lib/logger';
 
 export default function ClientInspectionDetailScreen() {
   const router = useRouter();
@@ -165,7 +166,7 @@ export default function ClientInspectionDetailScreen() {
         setClientCheckinPhotos(photosRes.data || []);
         setIsLoading(false);
       } catch (err) {
-        console.warn('Failed loading client inspection data:', err);
+        logger.warn('Failed loading client inspection data:', err);
         if (isMounted) setIsLoading(false);
       }
     };

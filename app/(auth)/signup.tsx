@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
+import logger from '../../lib/logger';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -44,7 +45,7 @@ export default function SignupScreen() {
         setSelectedAvatar(result.assets[0].uri);
       }
     } catch (e) {
-      console.warn('ImagePicker error:', e);
+      logger.warn('ImagePicker error:', e);
     }
   };
 

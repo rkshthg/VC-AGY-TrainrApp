@@ -4,6 +4,7 @@ import { calculate1RM } from '../lib/healthMetrics';
 import { supabase } from '../lib/supabase';
 import { queueOfflineTransaction } from '../lib/offlineSync';
 import { useAuthStore } from './authStore';
+import logger from '../lib/logger';
 
 export interface ExerciseDef {
   id: string;
@@ -250,7 +251,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         isLoading: false,
       });
     } catch (e) {
-      console.warn('Failed to fetch workout data', e);
+      logger.warn('Failed to fetch workout data', e);
       set({ isLoading: false });
     }
   },
@@ -288,7 +289,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           .single();
 
         if (planErr || !insertedPlan) {
-          console.error('Failed inserting workout_plan into Supabase:', planErr);
+          logger.error('Failed inserting workout_plan into Supabase:', planErr);
           return;
         }
 
@@ -307,7 +308,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             .single();
 
           if (dayErr) {
-            console.error('Failed inserting workout_plan_days into Supabase:', dayErr);
+            logger.error('Failed inserting workout_plan_days into Supabase:', dayErr);
           }
 
           if (insertedDay && day.exercises && day.exercises.length > 0) {
@@ -321,7 +322,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             }));
             const { error: exErr } = await supabase.from('workout_plan_exercises').insert(exPayloads);
             if (exErr) {
-              console.error('Failed inserting workout_plan_exercises into Supabase:', exErr);
+              logger.error('Failed inserting workout_plan_exercises into Supabase:', exErr);
             }
           }
         }
@@ -334,7 +335,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           }));
           const { error: assignErr } = await supabase.from('workout_plan_assignments').insert(assignPayloads);
           if (assignErr) {
-            console.error('Failed inserting workout_plan_assignments into Supabase:', assignErr);
+            logger.error('Failed inserting workout_plan_assignments into Supabase:', assignErr);
           }
         }
 
@@ -344,10 +345,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           ),
         }));
       } catch (err) {
-        console.error('Error persisting workout plan to Supabase:', err);
+        logger.error('Error persisting workout plan to Supabase:', err);
       }
     } else {
-      console.warn('Cannot persist workout_plan to Supabase: No active authenticated user ID found.');
+      logger.warn('Cannot persist workout_plan to Supabase: No active authenticated user ID found.');
     }
   },
 
@@ -410,7 +411,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         }
       }
     } catch (e) {
-      console.warn('Failed updating workout plan in Supabase:', e);
+      logger.warn('Failed updating workout plan in Supabase:', e);
     }
   },
 
@@ -423,7 +424,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       try {
         await supabase.from('workout_plans').delete().eq('id', planId);
       } catch (e) {
-        console.warn('Failed deleting workout plan from Supabase:', e);
+        logger.warn('Failed deleting workout plan from Supabase:', e);
       }
     }
   },

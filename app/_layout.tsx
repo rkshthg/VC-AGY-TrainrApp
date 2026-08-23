@@ -6,6 +6,8 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '../lib/theme';
 import { supabase } from '../lib/supabase';
+import logger from '../lib/logger';
+import { secureGetProfile } from '../lib/secureProfileCache';
 
 WebBrowser.maybeCompleteAuthSession();
 import { useAuthStore } from '../store/authStore';
@@ -14,6 +16,9 @@ import { useWorkoutStore } from '../store/workoutStore';
 import { useNutritionStore } from '../store/nutritionStore';
 import { useTrainerStore } from '../store/trainerStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+/** Allowed URL schemes for deep link auth processing. */
+const ALLOWED_AUTH_SCHEMES = ['trainr://', 'com.trainr.trainrapp://', 'com.anonymous.trainrapp://'];
 
 export default function RootLayout() {
   const theme = useTheme();
@@ -27,6 +32,15 @@ export default function RootLayout() {
   useEffect(() => {
     const handleDeepLink = async (url: string) => {
       if (!url) return;
+
+      // SECURITY: Validate URL scheme before processing auth parameters
+      const lowerUrl = url.toLowerCase();
+      const isAllowedScheme = ALLOWED_AUTH_SCHEMES.some(scheme => lowerUrl.startsWith(scheme));
+      if (!isAllowedScheme && !lowerUrl.startsWith('https://')) {
+        logger.warn('Rejected deep link with unrecognized scheme');
+        return;
+      }
+
       if (url.includes('code=') || url.includes('access_token=')) {
         try {
           useAuthStore.getState().setIsAuthLoading(true);
@@ -57,7 +71,7 @@ export default function RootLayout() {
             });
           }
         } catch (e) {
-          console.error('Deep link auth error:', e);
+          logger.error('Deep link auth error:', e);
         }
       }
     };
@@ -72,10 +86,11 @@ export default function RootLayout() {
 
     const initAuth = async () => {
       // Load cached profile immediately to prevent default state flashes
+      // SECURITY: Profile cache now uses encrypted SecureStore on native platforms
       try {
-        const cached = await AsyncStorage.getItem('@trainr_profile');
+        const cached = await secureGetProfile();
         if (cached) {
-          useAuthStore.getState().setProfile(JSON.parse(cached));
+          useAuthStore.getState().setProfile(cached);
         } else {
           const savedTheme = await AsyncStorage.getItem('@trainr_theme_mode');
           if (savedTheme) await useAuthStore.getState().setThemeMode(savedTheme as any);
@@ -83,7 +98,7 @@ export default function RootLayout() {
           if (savedUnits) await useAuthStore.getState().setUnitSystem(savedUnits as any);
         }
       } catch (e) {
-        console.warn('Failed to restore cached profile:', e);
+        logger.warn('Failed to restore cached profile:', e);
       }
 
       const { data: { session: initialSession } } = await supabase.auth.getSession();
@@ -91,9 +106,8 @@ export default function RootLayout() {
         // getUser() validates the token against the backend to verify it hasn't been deleted or invalidated
         const { data: { user }, error } = await supabase.auth.getUser();
         if (error || !user) {
-          console.warn('Stale session detected, logging out:', error?.message);
+          logger.warn('Stale session detected, logging out');
           await supabase.auth.signOut();
-          await AsyncStorage.removeItem('@trainr_profile');
           useAuthStore.getState().logout();
           useAuthStore.getState().setIsAuthLoading(false);
           return;

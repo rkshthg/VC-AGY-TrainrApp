@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { queueOfflineTransaction } from '../lib/offlineSync';
 import { computeFullHealthMetrics, CalculatedHealthMetrics, BodyStats } from '../lib/healthMetrics';
+import logger from '../lib/logger';
 
 export interface WeightLog {
   id: string;
@@ -214,7 +215,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
       set({ weightHistory, latestMeasurements, checkinPhotos, checkinLogs, isLoading: false });
     } catch (e) {
-      console.warn('Failed to fetch progress data', e);
+      logger.warn('Failed to fetch progress data', e);
       set({ isLoading: false });
     }
   },

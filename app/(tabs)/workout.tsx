@@ -9,6 +9,7 @@ import { useWorkoutStore, WorkoutPlan } from '../../store/workoutStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
+import logger from '../../lib/logger';
 
 export default function WorkoutScreen() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function WorkoutScreen() {
         await fetchWorkoutData(profile.id);
       }
     } catch (e) {
-      console.warn('Workout refresh error:', e);
+      logger.warn('Workout refresh error:', e);
     } finally {
       setRefreshing(false);
     }

@@ -13,7 +13,12 @@
       "backgroundColor": "#F9F6F0"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,8 +27,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "allowBackup": false,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.TrainrApp",
+      "package": "com.trainr.TrainrApp",
       "versionCode": 36
     },
     "web": {

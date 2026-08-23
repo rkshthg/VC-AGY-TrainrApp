@@ -19,6 +19,7 @@ import { useNutritionStore, FoodItem } from '../../store/nutritionStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
+import logger from '../../lib/logger';
 
 import * as ImagePicker from 'expo-image-picker';
 
@@ -102,7 +103,7 @@ export default function ScanMealScreen() {
     } catch (e) {
       setLoading(false);
       setPhotoUri(null);
-      console.error('Scan Error:', e);
+      logger.error('Scan Error:', e);
       Alert.alert('Scan Error', 'Failed to analyze meal photo with AI. Please try again.');
     }
   };
