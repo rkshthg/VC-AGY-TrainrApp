@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS trainr.users (
   full_name TEXT NOT NULL,
   avatar_url TEXT,
   role TEXT NOT NULL CHECK (role IN ('CLIENT', 'TRAINER')),
-  trainer_code TEXT UNIQUE, -- e.g. TR-8942 for Trainers
+  trainer_code TEXT UNIQUE, -- format XX-XXXX, e.g. K7-M2QX, for Trainers
   linked_trainer_id UUID REFERENCES trainr.users(id) ON DELETE SET NULL, -- for Clients
   height_cm NUMERIC(5, 2),
   weight_kg NUMERIC(5, 2),
@@ -269,4 +269,5 @@ ALTER PUBLICATION supabase_realtime ADD TABLE trainr.body_measurements;
 ALTER PUBLICATION supabase_realtime ADD TABLE trainr.weight_logs;
 ALTER PUBLICATION supabase_realtime ADD TABLE trainr.personal_records;
 ALTER PUBLICATION supabase_realtime ADD TABLE trainr.trainer_feed_events;
+ALTER PUBLICATION supabase_realtime ADD TABLE trainr.macro_targets;
 

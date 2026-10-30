@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 import exerciseData from '../assets/data/exercises.json';
 import { calculate1RM } from '../lib/healthMetrics';
 import { supabase } from '../lib/supabase';
@@ -11,6 +14,7 @@ export interface ExerciseDef {
   name: string;
   target_muscle: string;
   category: string;
+  isCustom?: boolean;
 }
 
 export interface PlanExercise {
@@ -70,6 +74,14 @@ export interface LoggedExerciseDetail {
   totalVolumeKg: number;
 }
 
+/** Sets from the most recent session that included an exercise. */
+export interface LastPerformance {
+  date: string;
+  sets: { weightKg: number; reps: number }[];
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface CompletedWorkoutHeader {
   id: string;
   title: string;
@@ -88,10 +100,11 @@ interface WorkoutState {
   activeSession: ActiveWorkoutSession | null;
   workoutHistory: CompletedWorkoutHeader[];
   personalRecords: Record<string, { weightKg: number; reps: number; oneRmKg: number; date: string }>;
+  lastPerformance: Record<string, LastPerformance>;
   isLoading: boolean;
 
   fetchWorkoutData: (userId: string) => Promise<void>;
-  createPlan: (plan: Omit<WorkoutPlan, 'id'>, assignedClientIds?: string[]) => void;
+  createPlan: (plan: Omit<WorkoutPlan, 'id'>, assignedClientIds?: string[]) => Promise<string | undefined>;
   updatePlan: (planId: string, updates: Partial<WorkoutPlan>) => void;
   deletePlan: (planId: string) => void;
   setActivePlan: (planId: string) => void;
@@ -105,9 +118,11 @@ interface WorkoutState {
   removeExerciseFromActiveSession: (exerciseId: string) => void;
   finishSession: () => CompletedWorkoutHeader | null;
   cancelSession: () => void;
+  addCustomExercise: (name: string, target_muscle: string, category: string) => Promise<ExerciseDef>;
+  reset: () => void;
 }
 
-export const useWorkoutStore = create<WorkoutState>((set, get) => ({
+export const useWorkoutStore = create<WorkoutState>()(persist((set, get) => ({
   exerciseCatalog: exerciseData as ExerciseDef[],
   savedPlans: [],
   activePlanId: null,
@@ -123,6 +138,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   activeSession: null,
   workoutHistory: [],
   personalRecords: {},
+  lastPerformance: {},
   isLoading: false,
 
   fetchWorkoutData: async (userId: string) => {
@@ -130,7 +146,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     try {
       const role = useAuthStore.getState().role;
 
-      const [logsRes, prsRes, plansRes, assignmentsRes] = await Promise.all([
+      const [logsRes, prsRes, plansRes, assignmentsRes, customExRes] = await Promise.all([
         supabase.from('workout_logs').select(`
           *,
           workout_log_sets (*)
@@ -159,7 +175,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             trainer_id
           )
         `).order('created_at', { ascending: false }),
-        supabase.from('workout_plan_assignments').select('plan_id').eq('client_id', userId)
+        supabase.from('workout_plan_assignments').select('plan_id').eq('client_id', userId),
+        supabase.from('custom_exercises').select('*').eq('created_by', userId),
       ]);
 
       const workoutHistory: CompletedWorkoutHeader[] = (logsRes.data || []).map(log => {
@@ -195,6 +212,25 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           exerciseCount: log.exercise_count || exerciseLogs.length,
           exerciseLogs,
         };
+      });
+
+      const lastPerformance: Record<string, LastPerformance> = {};
+      (logsRes.data || []).forEach((log: any) => {
+        const byExercise: Record<string, any[]> = {};
+        (log.workout_log_sets || [])
+          .filter((s: any) => s.is_completed !== false)
+          .forEach((s: any) => {
+            (byExercise[s.exercise_id] = byExercise[s.exercise_id] || []).push(s);
+          });
+        Object.entries(byExercise).forEach(([exId, sets]) => {
+          if (lastPerformance[exId]) return; // logs are newest first
+          lastPerformance[exId] = {
+            date: log.created_at,
+            sets: sets
+              .sort((a, b) => a.set_number - b.set_number)
+              .map((s) => ({ weightKg: Number(s.weight_kg), reps: Number(s.reps) })),
+          };
+        });
       });
 
       const personalRecords: Record<string, any> = {};
@@ -244,10 +280,34 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           };
         });
 
+      const baseCatalog = exerciseData as ExerciseDef[];
+      const customExercises: ExerciseDef[] = (customExRes?.data || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        target_muscle: c.target_muscle,
+        category: c.equipment || 'Other',
+        isCustom: true,
+      }));
+
+      if (customExercises.length > 0) {
+        AsyncStorage.setItem('@trainr_custom_exercises', JSON.stringify(customExercises)).catch(() => {});
+      }
+
+      const mergedCatalog = [...baseCatalog];
+      customExercises.forEach((c) => {
+        if (!mergedCatalog.some((e) => e.id === c.id)) {
+          mergedCatalog.push(c);
+        }
+      });
+
       set({
         workoutHistory,
         personalRecords,
-        savedPlans: fetchedPlans.length > 0 ? fetchedPlans : get().savedPlans,
+        lastPerformance,
+        // Trust the server when the query worked (even if it returned no
+        // plans); keep local plans only if it failed (e.g. offline).
+        savedPlans: plansRes.error ? get().savedPlans : fetchedPlans,
+        exerciseCatalog: mergedCatalog,
         isLoading: false,
       });
     } catch (e) {
@@ -268,6 +328,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
     const newPlan: WorkoutPlan = {
       ...planData,
+      createdBy: userId || planData.createdBy,
       id: tempId,
       assignedClientIds: clientsList,
       isAssignedToClient: clientsList.length > 0 || planData.isAssignedToClient || false,
@@ -290,7 +351,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
         if (planErr || !insertedPlan) {
           logger.error('Failed inserting workout_plan into Supabase:', planErr);
-          return;
+          return tempId;
         }
 
         const realPlanId = insertedPlan.id;
@@ -343,16 +404,33 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           savedPlans: state.savedPlans.map((p) =>
             p.id === tempId ? { ...p, id: realPlanId } : p
           ),
+          activePlanId: state.activePlanId === tempId ? realPlanId : state.activePlanId,
         }));
+        return realPlanId;
       } catch (err) {
         logger.error('Error persisting workout plan to Supabase:', err);
       }
     } else {
       logger.warn('Cannot persist workout_plan to Supabase: No active authenticated user ID found.');
     }
+    return tempId;
   },
 
   updatePlan: async (planId, updates) => {
+    const myId = useAuthStore.getState().profile?.id;
+    const original = get().savedPlans.find((p) => p.id === planId);
+    if (original && myId && UUID_RE.test(original.createdBy) && original.createdBy !== myId) {
+      // Someone else's plan (assigned by a trainer). Only the creator can
+      // change it, so save the client's edits as their own copy (PRD 3.4).
+      const copyId = await get().createPlan({
+        title: updates.title && updates.title !== original.title ? updates.title : `${original.title} (My Version)`,
+        createdBy: myId,
+        days: updates.days || original.days,
+      });
+      if (copyId && get().activePlanId === planId) set({ activePlanId: copyId });
+      return;
+    }
+
     const isAssignedNow = (updates.assignedClientIds && updates.assignedClientIds.length > 0) || updates.isAssignedToClient;
     const currentActiveId = get().activePlanId;
     const currentRole = useAuthStore.getState().role;
@@ -416,16 +494,33 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   deletePlan: async (planId) => {
+    const plan = get().savedPlans.find((p) => p.id === planId);
+    const prevPlans = get().savedPlans;
+    const prevActive = get().activePlanId;
     set((state) => ({
       savedPlans: state.savedPlans.filter((p) => p.id !== planId),
+      activePlanId: state.activePlanId === planId ? null : state.activePlanId,
     }));
 
-    if (!planId.startsWith('plan_')) {
-      try {
-        await supabase.from('workout_plans').delete().eq('id', planId);
-      } catch (e) {
-        logger.warn('Failed deleting workout plan from Supabase:', e);
-      }
+    if (planId.startsWith('plan_')) return;
+
+    const myId = useAuthStore.getState().profile?.id;
+    // A plan someone else created (a trainer's assigned plan) can't be deleted
+    // by the client; instead drop the client's assignment so it leaves their list.
+    const isSomeoneElses = !!plan && !!myId && UUID_RE.test(plan.createdBy) && plan.createdBy !== myId;
+    try {
+      const { error } = isSomeoneElses
+        ? await supabase
+            .from('workout_plan_assignments')
+            .delete()
+            .eq('plan_id', planId)
+            .eq('client_id', myId!)
+        : await supabase.from('workout_plans').delete().eq('id', planId);
+      if (error) throw error;
+    } catch (e) {
+      logger.warn('Failed deleting workout plan from Supabase:', e);
+      set({ savedPlans: prevPlans, activePlanId: prevActive });
+      Alert.alert('Could Not Delete', 'The routine could not be removed. Check your connection and try again.');
     }
   },
 
@@ -445,30 +540,26 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       const catalogItem = get().exerciseCatalog.find(
         (c) => c.id === e.exerciseId || c.name.toLowerCase() === e.name.toLowerCase()
       );
+      const last = get().lastPerformance[e.exerciseId];
+      const top = last ? topSet(last) : undefined;
       return {
         exerciseId: e.exerciseId,
         exerciseName: e.name,
         targetMuscle: catalogItem ? catalogItem.category : 'General',
-        sets: Array.from({ length: e.targetSets }).map((_, idx) => ({
-          setId: `set_${e.exerciseId}_${idx}`,
-          setNumber: idx + 1,
-          weightKg: e.targetWeightKg || 20,
-          reps: 10,
-          isCompleted: false,
-        })),
+        lastWeightKg: top?.weightKg,
+        lastReps: top?.reps,
+        sets: Array.from({ length: e.targetSets }).map((_, idx) => {
+          const prev = last?.sets[idx] || last?.sets[last.sets.length - 1];
+          return {
+            setId: `set_${e.exerciseId}_${idx}`,
+            setNumber: idx + 1,
+            weightKg: prev?.weightKg ?? (e.targetWeightKg || 20),
+            reps: prev?.reps ?? (parseInt(String(e.targetReps), 10) || 10),
+            isCompleted: false,
+          };
+        }),
       };
-    }) || [
-      {
-        exerciseId: 'ex_01',
-        exerciseName: 'Barbell Bench Press',
-        targetMuscle: 'Chest',
-        sets: [
-          { setId: 's1', setNumber: 1, weightKg: 60, reps: 10, isCompleted: false },
-          { setId: 's2', setNumber: 2, weightKg: 70, reps: 8, isCompleted: false },
-          { setId: 's3', setNumber: 3, weightKg: 70, reps: 8, isCompleted: false },
-        ],
-      },
-    ];
+    }) || [];
 
     const session: ActiveWorkoutSession = {
       sessionId: 'session_' + Date.now(),
@@ -509,39 +600,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       },
     });
 
-    // Check PR update
-    const calculated1RM = calculate1RM(weightKg, reps);
-    const existingPR = get().personalRecords[exerciseId];
-    if (!existingPR || calculated1RM > existingPR.oneRmKg) {
-      const dateStr = new Date().toISOString();
-      set((state) => ({
-        personalRecords: {
-          ...state.personalRecords,
-          [exerciseId]: {
-            weightKg,
-            reps,
-            oneRmKg: calculated1RM,
-            date: dateStr,
-          },
-        },
-      }));
-      
-      const userId = useAuthStore.getState().profile?.id;
-      if (userId) {
-        const payload = {
-          user_id: userId,
-          exercise_id: exerciseId,
-          weight_kg: weightKg,
-          reps: reps,
-          one_rm_kg: calculated1RM,
-          achieved_at: dateStr
-        };
-        supabase.from('personal_records').upsert(payload, { onConflict: 'user_id,exercise_id' })
-          .then(({error}) => {
-             if (error) queueOfflineTransaction('ADD_PR', payload);
-          });
-      }
-    }
+    // Personal records are calculated in finishSession from completed sets.
   },
 
   updateSetValues: (exerciseId, setIndex, weightKg, reps) => {
@@ -614,15 +673,22 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const active = get().activeSession;
     if (!active) return;
 
+    const last = get().lastPerformance[exerciseDef.exerciseId];
+    const top = last ? topSet(last) : undefined;
+    const setCount = last ? Math.max(1, last.sets.length) : 3;
     const newEx: ActiveExerciseSession = {
       exerciseId: exerciseDef.exerciseId,
       exerciseName: exerciseDef.exerciseName,
       targetMuscle: exerciseDef.targetMuscle || 'General',
-      sets: [
-        { setId: `s_${Date.now()}_1`, setNumber: 1, weightKg: 20, reps: 10, isCompleted: false },
-        { setId: `s_${Date.now()}_2`, setNumber: 2, weightKg: 20, reps: 10, isCompleted: false },
-        { setId: `s_${Date.now()}_3`, setNumber: 3, weightKg: 20, reps: 10, isCompleted: false },
-      ],
+      lastWeightKg: top?.weightKg,
+      lastReps: top?.reps,
+      sets: Array.from({ length: setCount }).map((_, i) => ({
+        setId: `s_${Date.now()}_${i + 1}`,
+        setNumber: i + 1,
+        weightKg: last?.sets[i]?.weightKg ?? 20,
+        reps: last?.sets[i]?.reps ?? 10,
+        isCompleted: false,
+      })),
     };
 
     set({
@@ -709,9 +775,31 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       }
     }
 
+    // Personal records: best estimated 1RM per exercise from completed sets.
+    const newPRs: Record<string, { weightKg: number; reps: number; oneRmKg: number; date: string }> = {};
+    exercisesToLog.forEach((ex) => {
+      ex.sets.filter((s) => s.isCompleted && s.reps > 0 && s.weightKg > 0).forEach((s) => {
+        const oneRm = calculate1RM(s.weightKg, s.reps);
+        const best = newPRs[ex.exerciseId] || get().personalRecords[ex.exerciseId];
+        if (!best || oneRm > best.oneRmKg) {
+          newPRs[ex.exerciseId] = { weightKg: s.weightKg, reps: s.reps, oneRmKg: oneRm, date: header.date };
+        }
+      });
+    });
+
+    const newLast: Record<string, LastPerformance> = {};
+    exercisesToLog.forEach((ex) => {
+      newLast[ex.exerciseId] = {
+        date: header.date,
+        sets: ex.sets.filter((s) => s.isCompleted).map((s) => ({ weightKg: s.weightKg, reps: s.reps })),
+      };
+    });
+
     set((state) => ({
       activeSession: null,
       workoutHistory: [header, ...state.workoutHistory],
+      personalRecords: { ...state.personalRecords, ...newPRs },
+      lastPerformance: { ...state.lastPerformance, ...newLast },
     }));
 
     // Sync to Supabase
@@ -719,43 +807,143 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     if (userId) {
       const logPayload = {
         user_id: userId,
-        plan_id: null,
+        plan_id: active.planId && UUID_RE.test(active.planId) ? active.planId : null,
         title: header.title,
         duration_minutes: header.durationMinutes,
         total_volume_kg: header.totalVolumeKg,
         exercise_count: header.exerciseCount,
         created_at: header.date
       };
-      
-      supabase.from('workout_logs').insert(logPayload).select('id').single()
-        .then(({ data, error }) => {
-          if (error) {
-             queueOfflineTransaction('FINISH_WORKOUT', logPayload);
-          } else if (data) {
-             // Successfully inserted workout header, now insert only completed sets
-             const setPayloads: any[] = [];
-             exercisesToLog.forEach(ex => {
-               ex.sets.filter(s => s.isCompleted).forEach(s => {
-                  setPayloads.push({
-                     workout_log_id: data.id,
-                     exercise_id: ex.exerciseId,
-                     exercise_name: ex.exerciseName,
-                     set_number: s.setNumber,
-                     weight_kg: s.weightKg,
-                     reps: s.reps,
-                     is_completed: true
-                  });
-               });
-             });
-             if (setPayloads.length > 0) {
-               supabase.from('workout_log_sets').insert(setPayloads).then();
-             }
-          }
+      const setRows: any[] = [];
+      exercisesToLog.forEach((ex) => {
+        ex.sets.filter((s) => s.isCompleted).forEach((s) => {
+          setRows.push({
+            exercise_id: ex.exerciseId,
+            exercise_name: ex.exerciseName,
+            set_number: s.setNumber,
+            weight_kg: s.weightKg,
+            reps: s.reps,
+            is_completed: true,
+          });
         });
+      });
+
+      (async () => {
+        try {
+          const { data, error } = await supabase.from('workout_logs').insert(logPayload).select('id').single();
+          if (error || !data) {
+            queueOfflineTransaction('FINISH_WORKOUT', { log: logPayload, sets: setRows });
+            return;
+          }
+          if (setRows.length > 0) {
+            const { error: setsError } = await supabase
+              .from('workout_log_sets')
+              .insert(setRows.map((r) => ({ ...r, workout_log_id: data.id })));
+            if (setsError) logger.warn('Failed to save workout sets:', setsError.message);
+          }
+        } catch {
+          queueOfflineTransaction('FINISH_WORKOUT', { log: logPayload, sets: setRows });
+        }
+      })();
+
+      Object.entries(newPRs).forEach(([exerciseId, pr]) => {
+        const payload = {
+          user_id: userId,
+          exercise_id: exerciseId,
+          weight_kg: pr.weightKg,
+          reps: pr.reps,
+          one_rm_kg: pr.oneRmKg,
+          achieved_at: pr.date,
+        };
+        supabase.from('personal_records').upsert(payload, { onConflict: 'user_id,exercise_id' })
+          .then(({ error }) => {
+            if (error) queueOfflineTransaction('ADD_PR', payload);
+          });
+      });
     }
 
     return header;
   },
 
   cancelSession: () => set({ activeSession: null }),
+
+  addCustomExercise: async (name: string, target_muscle: string, category: string) => {
+    const userId = useAuthStore.getState().profile?.id;
+    const tempId = 'custom_' + Date.now();
+    const newEx: ExerciseDef = {
+      id: tempId,
+      name: name.trim(),
+      target_muscle: target_muscle.trim(),
+      category: category.trim() || 'Other',
+      isCustom: true,
+    };
+
+    set((state) => ({
+      exerciseCatalog: [...state.exerciseCatalog, newEx],
+    }));
+
+    try {
+      const stored = await AsyncStorage.getItem('@trainr_custom_exercises');
+      const existing: ExerciseDef[] = stored ? JSON.parse(stored) : [];
+      await AsyncStorage.setItem('@trainr_custom_exercises', JSON.stringify([...existing, newEx]));
+    } catch {}
+
+    if (userId) {
+      try {
+        const { data, error } = await supabase
+          .from('custom_exercises')
+          .insert({
+            created_by: userId,
+            name: newEx.name,
+            target_muscle: newEx.target_muscle,
+            equipment: newEx.category,
+          })
+          .select()
+          .single();
+
+        if (!error && data) {
+          set((state) => ({
+            exerciseCatalog: state.exerciseCatalog.map((ex) =>
+              ex.id === tempId ? { ...ex, id: data.id } : ex
+            ),
+          }));
+          return { ...newEx, id: data.id };
+        }
+        if (error) logger.warn('Failed to save custom exercise:', error.message);
+      } catch (err) {
+        logger.error('Failed to save custom exercise to Supabase', err);
+      }
+    }
+    return newEx;
+  },
+
+  reset: () =>
+    set({
+      exerciseCatalog: exerciseData as ExerciseDef[],
+      savedPlans: [],
+      activePlanId: null,
+      activeRoutineDayIndexMap: {},
+      activeSession: null,
+      workoutHistory: [],
+      personalRecords: {},
+      lastPerformance: {},
+      isLoading: false,
+    }),
+}), {
+  // Keep an in-progress workout (and routine position) if the app is closed.
+  name: '@trainr_workout_session',
+  storage: createJSONStorage(() => AsyncStorage),
+  partialize: (state) => ({
+    activeSession: state.activeSession,
+    activePlanId: state.activePlanId,
+    activeRoutineDayIndexMap: state.activeRoutineDayIndexMap,
+  }),
 }));
+
+/** Heaviest set from a previous session (ties broken by reps). */
+function topSet(last: LastPerformance): { weightKg: number; reps: number } | undefined {
+  return last.sets.reduce<{ weightKg: number; reps: number } | undefined>(
+    (best, s) => (!best || s.weightKg > best.weightKg || (s.weightKg === best.weightKg && s.reps > best.reps) ? s : best),
+    undefined
+  );
+}

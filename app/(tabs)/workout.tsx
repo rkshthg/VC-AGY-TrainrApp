@@ -10,6 +10,8 @@ import { useAuthStore } from '../../store/authStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
 import logger from '../../lib/logger';
+import { calculateWorkoutStreak, toLocalDateKey } from '../../lib/streak';
+import { beginWorkout } from '../../lib/beginWorkout';
 
 export default function WorkoutScreen() {
   const router = useRouter();
@@ -139,16 +141,15 @@ export default function WorkoutScreen() {
         return plan.assignedClientIds?.includes(selectedClientFilter);
       }
     } else {
-      const isAssigned = plan.isAssignedToClient || (plan.assignedClientIds && plan.assignedClientIds.length > 0);
-      const isClientCreated = !plan.createdBy || plan.createdBy === 'CLIENT' || plan.createdBy === 'usr_1';
-      return isAssigned || isClientCreated;
+      // fetchWorkoutData already limits clients to their own and assigned plans.
+      return true;
     }
   });
 
   // Quick KPI Stats Calculations
   const totalVolumeKg = workoutHistory.reduce((acc, h) => acc + (h.totalVolumeKg || 0), 0);
   
-  // Workouts This Week: Mon to Today
+  // Workouts This Week: Mon to Today (local calendar date based)
   const getWorkoutsThisWeekCount = () => {
     const now = new Date();
     const day = now.getDay();
@@ -157,11 +158,14 @@ export default function WorkoutScreen() {
     monday.setDate(now.getDate() - diffToMonday);
     monday.setHours(0, 0, 0, 0);
 
+    const mondayKey = toLocalDateKey(monday);
+    const todayKey = toLocalDateKey(now);
+
     const loggedDates = new Set<string>();
     workoutHistory.forEach((item) => {
-      const itemDate = new Date(item.date);
-      if (itemDate >= monday && itemDate <= now) {
-        loggedDates.add(itemDate.toISOString().split('T')[0]);
+      const itemKey = toLocalDateKey(item.date);
+      if (itemKey >= mondayKey && itemKey <= todayKey) {
+        loggedDates.add(itemKey);
       }
     });
     return loggedDates.size;
@@ -169,59 +173,34 @@ export default function WorkoutScreen() {
 
   const workoutsThisWeekCount = getWorkoutsThisWeekCount();
 
-  // Active Streak Calculation (consecutive logged days)
-  const getActiveStreakDays = () => {
-    if (!workoutHistory || workoutHistory.length === 0) return 0;
-
-    const loggedDatesSet = new Set(
-      workoutHistory.map((h) => new Date(h.date).toISOString().split('T')[0])
-    );
-
-    let streak = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let checkDate = new Date(today);
-    const todayStr = checkDate.toISOString().split('T')[0];
-
-    if (!loggedDatesSet.has(todayStr)) {
-      checkDate.setDate(checkDate.getDate() - 1);
-    }
-
-    while (true) {
-      const dateStr = checkDate.toISOString().split('T')[0];
-      if (loggedDatesSet.has(dateStr)) {
-        streak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-
-    return streak;
-  };
-
-  const activeStreak = getActiveStreakDays();
+  // Active Streak: consecutive workouts allowing up to 2 rest days between them
+  const activeStreak = calculateWorkoutStreak(
+    workoutHistory.map((h) => h.date),
+    2
+  );
 
   const handleStartFreestyle = () => {
-    startSession();
-    router.push('/workout/active-session');
+    beginWorkout(router, () => startSession());
   };
 
   const handleStartPlanSession = (plan: WorkoutPlan, dayIdx?: number) => {
     const idx = dayIdx !== undefined ? dayIdx : activeRoutineDayIndexMap[plan.id] || 0;
-    startSession(plan, idx);
-    router.push('/workout/active-session');
+    beginWorkout(router, () => startSession(plan, idx));
   };
 
   const handleDeletePlan = (planId: string, title: string) => {
+    const plan = savedPlans.find((p) => p.id === planId);
+    const fromTrainer = role === 'CLIENT' && !!plan && !!profile?.id && plan.createdBy !== profile.id;
+    const message = fromTrainer
+      ? `Remove "${title}" from your routines? Your trainer assigned it, so they can assign it again later.`
+      : `Are you sure you want to remove "${title}"?`;
     if (Platform.OS === 'web') {
-      const confirmDelete = window.confirm(`Are you sure you want to remove "${title}"?`);
+      const confirmDelete = window.confirm(message);
       if (confirmDelete) {
         deletePlan(planId);
       }
     } else {
-      Alert.alert('Delete Workout Routine', `Are you sure you want to remove "${title}"?`, [
+      Alert.alert('Delete Workout Routine', message, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => deletePlan(planId) },
       ]);
@@ -285,7 +264,7 @@ export default function WorkoutScreen() {
                 { color: theme.isDark ? theme.accentGold : theme.primary },
               ]}
             >
-              {activeStreak} {activeStreak === 1 ? 'Day' : 'Days'}
+              {activeStreak} {activeStreak === 1 ? 'Workout' : 'Workouts'}
             </Text>
             <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Consistent</Text>
           </View>

@@ -28,21 +28,24 @@ export function formatWeight(
  * Converts weight from kg to target unit system number (raw value without string suffix)
  */
 export function convertWeight(kg: number, unitSystem: UnitSystem = 'METRIC'): number {
+  if (isNaN(kg)) return 0;
   if (unitSystem === 'IMPERIAL') {
-    return parseFloat((kg * 2.20462).toFixed(1));
+    return parseFloat((kg * 2.20462).toFixed(2));
   }
-  return parseFloat(kg.toFixed(1));
+  return parseFloat(kg.toFixed(2));
 }
 
 /**
  * Converts input weight from target unit system back to standard stored kg
  */
 export function parseWeightToKg(val: number, unitSystem: UnitSystem = 'METRIC'): number {
+  if (isNaN(val)) return 0;
   if (unitSystem === 'IMPERIAL') {
-    return parseFloat((val / 2.20462).toFixed(1));
+    return parseFloat((val / 2.20462).toFixed(2));
   }
-  return val;
+  return parseFloat(val.toFixed(2));
 }
+
 
 /**
  * Converts and formats length / body measurement from centimeters.

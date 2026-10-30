@@ -8,13 +8,21 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../store/authStore';
 import { useWorkoutStore } from '../store/workoutStore';
-import { useNutritionStore } from '../store/nutritionStore';
-import { useProgressStore } from '../store/progressStore';
-import { generateUserDataJSON } from '../lib/dataExport';
+import {
+  fetchAllUserData,
+  buildUserDataFiles,
+  saveExportFiles,
+  generateWorkoutPlansJSON,
+  generateWorkoutPlansText,
+} from '../lib/dataExport';
+import { processQueue, clearFinishedItems, getPendingQueueItems } from '../lib/offlineSync';
+import { clearMediaCache } from '../lib/photoStorage';
 import { CalendarLogModal } from './CalendarLogModal';
 import { useTheme } from '../lib/theme';
 
@@ -24,41 +32,134 @@ interface SettingsDrawerProps {
 }
 
 export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose }) => {
-  const { profile, role, themeMode, unitSystem, setThemeMode, setUnitSystem, logout, setRole } =
+  const { profile, role, themeMode, unitSystem, weightStep, setThemeMode, setUnitSystem, setWeightStep, logout, switchToTrainer, deleteAccount } =
     useAuthStore();
-  const todayMeals = useNutritionStore((state) => state.todayMeals);
-  const workoutHistory = useWorkoutStore((state) => state.workoutHistory);
-  const weightHistory = useProgressStore((state) => state.weightHistory);
+
+  const savedPlans = useWorkoutStore((state) => state.savedPlans);
   const theme = useTheme();
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  const notify = (title: string, message: string) => {
+    if (Platform.OS === 'web') alert(`${title}: ${message}`);
+    else Alert.alert(title, message);
+  };
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
 
-  const handleExportAllData = () => {
-    generateUserDataJSON(profile, todayMeals, workoutHistory, weightHistory);
-    Alert.alert('User Data Exported', 'Full dataset compiled successfully (JSON/CSV).');
+  const handleExportAllData = async () => {
+    if (!profile || busyAction) return;
+    setBusyAction('export');
+    try {
+      const data = await fetchAllUserData(profile.id);
+      const files = buildUserDataFiles(data);
+      const saved = await saveExportFiles(files);
+      if (saved) notify('Data Exported', `Saved ${files.length} file(s): your full data as JSON plus CSV logs.`);
+    } catch (e: any) {
+      notify('Export Failed', e?.message || 'Could not export your data. Check your connection and try again.');
+    } finally {
+      setBusyAction(null);
+    }
   };
 
-  const handleCleanStorage = () => {
-    Alert.alert('Cache Cleared', 'Local image cache and temporary sync logs flushed.');
+  const handleExportPlans = async (format: 'json' | 'text') => {
+    if (busyAction) return;
+    if (savedPlans.length === 0) {
+      notify('No Plans', 'You have no saved workout plans to export.');
+      return;
+    }
+    setBusyAction('plans');
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      const plans = savedPlans.map(({ id, title, days }) => ({ id, title, days }));
+      const saved = await saveExportFiles([
+        format === 'json'
+          ? { name: `trainr-plans-${stamp}.json`, mime: 'application/json', content: generateWorkoutPlansJSON(plans) }
+          : { name: `trainr-plans-${stamp}.txt`, mime: 'text/plain', content: generateWorkoutPlansText(plans) },
+      ]);
+      if (saved) notify('Plans Exported', `Exported ${plans.length} workout plan(s).`);
+    } catch (e: any) {
+      notify('Export Failed', e?.message || 'Could not export your plans.');
+    } finally {
+      setBusyAction(null);
+    }
   };
 
-  const handleSwitchToTrainer = () => {
-    setRole('TRAINER');
-    Alert.alert('Account Updated', 'You have switched to a Trainer Account.');
-    onClose();
+  const chooseExportPlansFormat = () => {
+    if (Platform.OS === 'web') {
+      handleExportPlans(window.confirm('Export as JSON? (Cancel for a plain text file)') ? 'json' : 'text');
+      return;
+    }
+    Alert.alert('Export Workout Plans', 'Choose a format', [
+      { text: 'JSON', onPress: () => handleExportPlans('json') },
+      { text: 'Text', onPress: () => handleExportPlans('text') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleCleanStorage = async () => {
+    if (busyAction) return;
+    setBusyAction('clean');
+    try {
+      // Send anything still pending, then drop finished items and cached image links.
+      const { synced } = await processQueue();
+      const removed = await clearFinishedItems();
+      clearMediaCache();
+      const pending = (await getPendingQueueItems()).length;
+      notify(
+        'Storage Cleaned',
+        `Synced ${synced} pending item(s), cleared ${removed} old queue entr${removed === 1 ? 'y' : 'ies'} and the image link cache.` +
+          (pending > 0 ? ` ${pending} item(s) are still waiting for a connection.` : '')
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleSwitchToTrainer = async () => {
+    if (busyAction) return;
+    setBusyAction('switch');
+    try {
+      const ok = await switchToTrainer();
+      if (ok) {
+        notify('Account Updated', `You are now a Trainer. Your Trainer Code is ${useAuthStore.getState().profile?.trainerCode}.`);
+        onClose();
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const performDelete = async () => {
+    setBusyAction('delete');
+    try {
+      const ok = await deleteAccount();
+      if (ok) {
+        setShowDeleteModal(false);
+        onClose();
+        notify('Account Deleted', 'Your account and data have been permanently removed.');
+      }
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const handleDeleteAccount = () => {
+    if (busyAction) return;
     if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') {
-      Alert.alert('Verification Failed', 'Please type DELETE exactly to confirm account deletion.');
+      notify('Verification Failed', 'Please type DELETE exactly to confirm account deletion.');
       return;
     }
-    setShowDeleteModal(false);
-    logout();
-    Alert.alert('Account Deleted', 'Your account and data have been permanently removed.');
-    onClose();
+    // Second confirmation step (PRD 2.3 / 7.2).
+    if (Platform.OS === 'web') {
+      if (window.confirm('This permanently deletes your account, logs and photos. Continue?')) performDelete();
+      return;
+    }
+    Alert.alert('Final Confirmation', 'This permanently deletes your account, logs and photos. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete Forever', style: 'destructive', onPress: performDelete },
+    ]);
   };
 
   return (
@@ -280,7 +381,65 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
               </View>
             </View>
 
+            {/* Weight Logging Stepper Step Preference */}
+            <View
+              style={[
+                styles.sectionCard,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: theme.border,
+                  ...theme.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>WEIGHT STEPPER INCREMENT</Text>
+              <View style={styles.toggleRow}>
+                {([2.5, 0.5] as const).map((stepVal) => {
+                  const isActive = weightStep === stepVal;
+                  const unitLabel = unitSystem === 'IMPERIAL' ? 'lbs' : 'kg';
+                  return (
+                    <TouchableOpacity
+                      key={stepVal}
+                      style={[
+                        styles.toggleOption,
+                        {
+                          backgroundColor: isActive
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.cardInner,
+                          borderColor: isActive
+                            ? theme.isDark
+                              ? theme.accentGold
+                              : theme.primary
+                            : theme.border,
+                        },
+                      ]}
+                      onPress={() => setWeightStep(stepVal)}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleOptionText,
+                          {
+                            color: isActive
+                              ? theme.isDark
+                                ? '#0A1A12'
+                                : '#FFFFFF'
+                              : theme.textSecondary,
+                            fontWeight: isActive ? 'bold' : 'normal',
+                          },
+                        ]}
+                      >
+                        ±{stepVal} {unitLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             {/* Tools & Storage */}
+
             <View
               style={[
                 styles.sectionCard,
@@ -299,6 +458,16 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
               >
                 <Ionicons name="download-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
                 <Text style={[styles.menuItemText, { color: theme.text }]}>Export All User Data (JSON/CSV)</Text>
+                {busyAction === 'export' && <ActivityIndicator size="small" color={theme.textSecondary} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.menuItemRow, { borderBottomColor: theme.navBorder }]}
+                onPress={chooseExportPlansFormat}
+              >
+                <Ionicons name="barbell-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
+                <Text style={[styles.menuItemText, { color: theme.text }]}>Export Workout Plans</Text>
+                {busyAction === 'plans' && <ActivityIndicator size="small" color={theme.textSecondary} />}
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -307,6 +476,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
               >
                 <Ionicons name="trash-outline" size={18} color={theme.textSecondary} />
                 <Text style={[styles.menuItemText, { color: theme.text }]}>Clean Local Cache & Storage</Text>
+                {busyAction === 'clean' && <ActivityIndicator size="small" color={theme.textSecondary} />}
               </TouchableOpacity>
             </View>
 
@@ -406,7 +576,11 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ visible, onClose
               </TouchableOpacity>
 
               <TouchableOpacity style={[styles.confirmDeleteBtn, { backgroundColor: theme.danger }]} onPress={handleDeleteAccount}>
-                <Text style={styles.confirmDeleteBtnText}>Confirm Delete</Text>
+                {busyAction === 'delete' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.confirmDeleteBtnText}>Confirm Delete</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import logger from '../lib/logger';
 import { secureSetProfile, secureGetProfile, secureRemoveProfile } from '../lib/secureProfileCache';
+import { ensureUploaded, toDisplayUrls, clearMediaCache, deleteAllMyMedia } from '../lib/photoStorage';
 
 export interface UserProfile {
   id: string;
@@ -69,7 +70,19 @@ interface AuthState {
   logout: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<boolean>;
   updateAvatarUrl: (url?: string) => Promise<boolean>;
+  updateDob: (dob: string | null) => Promise<boolean>;
+  switchToTrainer: () => Promise<boolean>;
+  deleteAccount: () => Promise<boolean>;
 }
+
+/** Profile with its avatar swapped for a viewable URL. */
+async function withDisplayAvatar(profile: UserProfile): Promise<UserProfile> {
+  const [avatar] = await toDisplayUrls([profile.avatarUrl]);
+  return { ...profile, avatarUrl: avatar };
+}
+
+const isTrainerCodeConflict = (err: any) =>
+  err?.code === '23505' && String(err?.message || '').includes('trainer_code');
 
 // Mapper to map database snake_case to frontend camelCase
 function mapDbToProfile(dbUser: any): UserProfile {
@@ -242,11 +255,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   generateTrainerCode: () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = 'TR-';
-    for (let i = 0; i < 4; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    // Format XX-XXXX: 6 random characters (no look-alikes such as 0/O, 1/I).
+    let raw = '';
+    for (let i = 0; i < 6; i++) {
+      raw += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    return code;
+    return `${raw.slice(0, 2)}-${raw.slice(2)}`;
   },
 
   fetchProfile: async (userId: string) => {
@@ -296,7 +310,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       
       if (data) {
-        const profile = mapDbToProfile(data);
+        const profile = await withDisplayAvatar(mapDbToProfile(data));
         await secureSetProfile(profile);
         get().setProfile(profile);
         set({ isLoading: false });
@@ -405,9 +419,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const currentProfile = get().profile || {} as Partial<UserProfile>;
       
       const isTrainer = data.role === 'TRAINER';
-      const trainerCode = isTrainer ? (get().trainerCode || get().generateTrainerCode()) : undefined;
+      let trainerCode = isTrainer
+        ? (currentProfile.trainerCode || get().trainerCode || get().generateTrainerCode())
+        : undefined;
 
-      const updates = {
+      let avatarRef: string | undefined;
+      try {
+        avatarRef = await ensureUploaded(data.avatarUrl, 'avatars');
+      } catch (e) {
+        logger.warn('Avatar upload failed during onboarding; continuing without it:', e);
+      }
+
+      const updates: Record<string, any> = {
         id: session.user.id,
         email: session.user.email || '',
         full_name: data.fullName || currentProfile.fullName || session.user.user_metadata?.full_name || 'User',
@@ -421,13 +444,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         goals: data.goals,
         is_onboarded: true,
       };
+      if (avatarRef) updates.avatar_url = avatarRef;
 
-      // 1. Upsert users table
-      const { data: updatedDb, error: userError } = await supabase
+      // 1. Upsert users table (retry with a fresh code if the trainer code is taken)
+      let { data: updatedDb, error: userError } = await supabase
         .from('users')
         .upsert(updates, { onConflict: 'id' })
         .select()
         .single();
+      for (let attempt = 0; isTrainer && isTrainerCodeConflict(userError) && attempt < 5; attempt++) {
+        trainerCode = get().generateTrainerCode();
+        updates.trainer_code = trainerCode;
+        ({ data: updatedDb, error: userError } = await supabase
+          .from('users')
+          .upsert(updates, { onConflict: 'id' })
+          .select()
+          .single());
+      }
         
       if (userError) {
         logger.warn('Failed onboarding completion in DB (users):', userError);
@@ -435,8 +468,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return false;
       }
 
-      // 2. Upsert macro targets if client and targets provided
-      if (data.role !== 'TRAINER' && data.macroTargets) {
+      // 2. Upsert macro targets (trainers have every client feature, PRD 2.1)
+      if (data.macroTargets) {
         const { error: macroError } = await supabase
           .from('macro_targets')
           .upsert({
@@ -462,8 +495,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
 
-      // 3. Insert body measurements if client and measurements provided
-      if (data.role !== 'TRAINER' && data.bodyMeasurements) {
+      // 3. Insert body measurements if provided
+      if (data.bodyMeasurements) {
         const hasMeasurements = Object.values(data.bodyMeasurements).some(v => v !== undefined);
         if (hasMeasurements) {
           const { error: measurementsError } = await supabase
@@ -490,7 +523,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       // 4. Insert initial weight log if provided
-      if (data.role !== 'TRAINER' && data.weightKg) {
+      if (data.weightKg) {
         const { error: weightError } = await supabase
           .from('weight_logs')
           .insert({
@@ -505,7 +538,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       
       if (updatedDb) {
-        const parsed = mapDbToProfile(updatedDb);
+        const parsed = await withDisplayAvatar(mapDbToProfile(updatedDb));
+        if (data.avatarUrl && !parsed.avatarUrl) parsed.avatarUrl = data.avatarUrl;
         if (data.macroTargets) {
           parsed.macroTargets = data.macroTargets;
         }
@@ -592,7 +626,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           profileData = insertedData || newProfile;
         }
         
-        const parsedProfile = mapDbToProfile(profileData);
+        const parsedProfile = await withDisplayAvatar(mapDbToProfile(profileData));
         get().setProfile(parsedProfile);
         await secureSetProfile(parsedProfile);
         return true;
@@ -605,12 +639,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  updateDob: async (dob) => {
+    try {
+      const currentProfile = get().profile;
+      if (!currentProfile) return false;
+      const { error } = await supabase
+        .from('users')
+        .update({ dob })
+        .eq('id', currentProfile.id);
+      if (error) {
+        logger.warn('Failed to update date of birth:', error.message);
+        showAlert('Update Error', 'Could not save your date of birth. Check your connection and try again.');
+        return false;
+      }
+      const updatedProfile = { ...currentProfile, dob: dob ?? undefined };
+      get().setProfile(updatedProfile as UserProfile);
+      await secureSetProfile(updatedProfile);
+      return true;
+    } catch (e) {
+      logger.error('Failed to update date of birth:', e);
+      return false;
+    }
+  },
+
   logout: async () => {
     try {
       await supabase.auth.signOut();
       await secureRemoveProfile();
     } catch (e) {
       // ignore
+    }
+
+    // Clear every other store and per-user cache so the next account on
+    // this device never sees the previous user's data.
+    try {
+      require('./workoutStore').useWorkoutStore.getState().reset();
+      require('./nutritionStore').useNutritionStore.getState().reset();
+      require('./progressStore').useProgressStore.getState().reset();
+      require('./trainerStore').useTrainerStore.getState().reset();
+      require('../lib/realtime').stopRealtime();
+      clearMediaCache();
+      await AsyncStorage.multiRemove(['@trainr_custom_exercises', '@trainr_workout_session']);
+    } catch (e) {
+      logger.warn('Failed to reset local state on logout:', e);
     }
     set({
       session: null,
@@ -627,9 +698,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const currentProfile = get().profile;
       if (!currentProfile) return false;
 
+      let ref: string | undefined;
+      try {
+        ref = await ensureUploaded(url, 'avatars');
+      } catch (e: any) {
+        logger.warn('Avatar upload failed:', e);
+        showAlert('Upload Error', 'Could not upload your photo. Check your connection and try again.');
+        return false;
+      }
+
       const { error } = await supabase
         .from('users')
-        .update({ avatar_url: url })
+        .update({ avatar_url: ref ?? null })
         .eq('id', currentProfile.id);
 
       if (error) {
@@ -644,6 +724,68 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return true;
     } catch (e) {
       logger.error('Failed to update avatar url:', e);
+      return false;
+    }
+  },
+
+  switchToTrainer: async () => {
+    const currentProfile = get().profile;
+    if (!currentProfile) return false;
+    if (currentProfile.role === 'TRAINER') return true;
+
+    try {
+      let code = currentProfile.trainerCode || get().generateTrainerCode();
+      let { error } = await supabase
+        .from('users')
+        .update({ role: 'TRAINER', trainer_code: code })
+        .eq('id', currentProfile.id);
+      for (let attempt = 0; isTrainerCodeConflict(error) && attempt < 5; attempt++) {
+        code = get().generateTrainerCode();
+        ({ error } = await supabase
+          .from('users')
+          .update({ role: 'TRAINER', trainer_code: code })
+          .eq('id', currentProfile.id));
+      }
+      if (error) {
+        logger.warn('Failed switching to trainer:', error);
+        showAlert('Switch Failed', error.message);
+        return false;
+      }
+
+      const updatedProfile: UserProfile = { ...currentProfile, role: 'TRAINER', trainerCode: code };
+      get().setProfile(updatedProfile);
+      await secureSetProfile(updatedProfile);
+      require('./trainerStore').useTrainerStore.getState().fetchRoster();
+      return true;
+    } catch (e) {
+      logger.error('Failed switching to trainer:', e);
+      return false;
+    }
+  },
+
+  deleteAccount: async () => {
+    const currentProfile = get().profile;
+    if (!currentProfile) return false;
+    try {
+      // Files first: storage objects can't be removed from SQL.
+      await deleteAllMyMedia(currentProfile.id);
+
+      // Deletes the auth user; every trainr row cascades from it.
+      const { error } = await supabase.rpc('delete_my_account');
+      if (error) {
+        logger.warn('Account deletion failed:', error);
+        showAlert('Delete Failed', error.message);
+        return false;
+      }
+
+      try {
+        await AsyncStorage.removeItem('@trainr_offline_queue');
+      } catch {}
+      await get().logout();
+      return true;
+    } catch (e: any) {
+      logger.error('Account deletion failed:', e);
+      showAlert('Delete Failed', e?.message || 'Could not delete your account. Please try again.');
       return false;
     }
   },

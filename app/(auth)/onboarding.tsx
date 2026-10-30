@@ -16,7 +16,9 @@ import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../lib/theme';
 import { getLengthUnitLabel } from '../../lib/units';
 import logger from '../../lib/logger';
+import { ageFromDob } from '../../lib/dates';
 
+import { formatTrainerCodeInput, TRAINER_CODE_MAX_LENGTH, TRAINER_CODE_PLACEHOLDER } from '../../lib/trainerCode';
 export default function OnboardingScreen() {
   const router = useRouter();
   const theme = useTheme();
@@ -32,6 +34,8 @@ export default function OnboardingScreen() {
   const [sex, setSex] = useState<'MALE' | 'FEMALE' | 'OTHER'>('MALE');
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
+  const [dob, setDob] = useState(''); // optional, YYYY-MM-DD (PRD 2.2)
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [activityLevel, setActivityLevel] = useState<'SEDENTARY' | 'LIGHTLY_ACTIVE' | 'MODERATELY_ACTIVE' | 'VERY_ACTIVE' | 'EXTRA_ACTIVE'>('MODERATELY_ACTIVE');
 
   const avatarPresets = [
@@ -71,10 +75,10 @@ export default function OnboardingScreen() {
   const [selectedGoals, setSelectedGoals] = useState<string[]>(['FAT_LOSS']);
 
   // Step 4 Nutrition Targets (Optional, default targets: 2500 kcal, 75g P, 250g C, 65g F)
-  const [calories, setCalories] = useState('2500');
-  const [protein, setProtein] = useState('75');
-  const [carbs, setCarbs] = useState('250');
-  const [fat, setFat] = useState('65');
+  const [calories, setCalories] = useState('');
+  const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
 
   // Step 5 Trainer Code
   const [trainerCodeInput, setTrainerCodeInput] = useState('');
@@ -105,6 +109,10 @@ export default function OnboardingScreen() {
         Alert.alert('Invalid Input', 'Please enter valid numerical values for Height and Weight.');
         return;
       }
+      if (dob.trim() && ageFromDob(dob.trim()) === undefined) {
+        Alert.alert('Invalid Date of Birth', 'Please enter your date of birth as YYYY-MM-DD (for example 1995-08-21), or leave it blank.');
+        return;
+      }
       setStep(2);
     } else if (step === 2) {
       // Step 2 Body Measurements: All fields optional
@@ -121,11 +129,14 @@ export default function OnboardingScreen() {
       setStep(5);
     } else {
       // Final Step Complete
+      if (isSubmitting) return;
+      setIsSubmitting(true);
+      try {
       if (trainerCodeInput.trim()) {
         await linkTrainer(trainerCodeInput.trim());
       }
 
-      await completeOnboarding({
+      const ok = await completeOnboarding({
         fullName: fullName.trim(),
         avatarUrl,
         role,
@@ -133,12 +144,13 @@ export default function OnboardingScreen() {
         heightCm: parseFloat(heightCm) || 175,
         weightKg: parseFloat(weightKg) || 75,
         activityLevel,
+        dob: dob.trim() || undefined,
         goals: selectedGoals,
         macroTargets: {
           calories: parseInt(calories) || 2500,
-          protein: parseInt(protein) || 75,
-          carbs: parseInt(carbs) || 250,
-          fat: parseInt(fat) || 65,
+          protein: parseFloat(protein) || 75,
+          carbs: parseFloat(carbs) || 250,
+          fat: parseFloat(fat) || 65,
         },
         bodyMeasurements: {
           neckCm: parseFloat(neckCm) || undefined,
@@ -150,9 +162,13 @@ export default function OnboardingScreen() {
           thighsLCm: parseFloat(thighsLCm) || undefined,
           thighsRCm: parseFloat(thighsRCm) || undefined,
         },
-      });
+      } as any);
 
-      router.replace('/(tabs)/dashboard');
+      // completeOnboarding shows its own error; stay here so the user can retry.
+      if (ok) router.replace('/(tabs)/dashboard');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -428,6 +444,24 @@ export default function OnboardingScreen() {
               placeholder="e.g. 75"
               placeholderTextColor={theme.textMuted}
               keyboardType="numeric"
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Date of Birth (Optional)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                  color: theme.text,
+                },
+              ]}
+              value={dob}
+              onChangeText={setDob}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.textMuted}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
             />
 
             <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Activity Level</Text>
@@ -849,8 +883,9 @@ export default function OnboardingScreen() {
                   },
                 ]}
                 value={trainerCodeInput}
-                onChangeText={setTrainerCodeInput}
-                placeholder="TR-V95Y"
+                onChangeText={(t) => setTrainerCodeInput(formatTrainerCodeInput(t))}
+                maxLength={TRAINER_CODE_MAX_LENGTH}
+                placeholder={TRAINER_CODE_PLACEHOLDER}
                 placeholderTextColor={theme.textMuted}
                 autoCapitalize="characters"
               />

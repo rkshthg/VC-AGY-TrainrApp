@@ -17,7 +17,7 @@ import logger from '../lib/logger';
 
 import { supabase } from '../lib/supabase';
 import { CompletedWorkoutHeader } from '../store/workoutStore';
-import { MealEntry } from '../store/nutritionStore';
+import { MealEntry, mapMealRows } from '../store/nutritionStore';
 import { useWorkoutStore } from '../store/workoutStore';
 import { useProgressStore } from '../store/progressStore';
 
@@ -97,15 +97,15 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
             .eq('user_id', cId)
             .order('created_at', { ascending: false }),
           supabase
-            .from('weight_history')
+            .from('weight_logs')
             .select('*')
             .eq('user_id', cId)
-            .order('created_at', { ascending: false }),
+            .order('recorded_at', { ascending: false }),
           supabase
-            .from('checkin_logs')
+            .from('body_measurements')
             .select('*')
             .eq('user_id', cId)
-            .order('created_at', { ascending: false }),
+            .order('recorded_at', { ascending: false }),
         ]);
 
         if (!isMounted) return;
@@ -145,39 +145,32 @@ export const CalendarLogModal: React.FC<CalendarLogModalProps> = ({ visible, onC
           };
         });
 
-        const meals: MealEntry[] = (mRes.data || []).map((m) => ({
-          id: m.id,
-          userId: m.user_id,
-          dishName: m.dish_name,
-          category: m.category as any,
-          timestamp: m.created_at,
-          photoUrl: m.photo_url,
-          totalCalories: m.total_calories,
-          totalProteinG: m.total_protein_g,
-          totalCarbsG: m.total_carbs_g,
-          totalFatG: m.total_fat_g,
-          items: (m.meal_items || []).map((i: any) => ({
-            id: i.id,
-            name: i.name,
-            quantity: i.quantity,
-            calories: i.calories,
-            proteinG: i.protein_g,
-            carbsG: i.carbs_g,
-            fatG: i.fat_g,
-          })),
-        }));
+        const meals: MealEntry[] = await mapMealRows(mRes.data || []);
+        if (!isMounted) return;
 
         const weightHist = (weightRes.data || []).map((w: any) => ({
           id: w.id,
-          date: w.created_at,
+          date: w.recorded_at,
           weightKg: w.weight_kg,
         }));
 
+        // Check-ins = body measurement entries (weight comes from weight_logs).
         const checkins = (checkinRes.data || []).map((c: any) => ({
           id: c.id,
-          date: c.created_at,
-          weightKg: c.weight_kg,
-          measurements: c.measurements,
+          date: c.recorded_at,
+          measurements: {
+            neckCm: c.neck_cm,
+            shouldersCm: c.shoulders_cm,
+            chestCm: c.chest_cm,
+            waistCm: c.waist_cm,
+            hipsCm: c.hips_cm,
+            bicepsCm: c.biceps_cm,
+            bicepsLCm: c.biceps_l_cm,
+            bicepsRCm: c.biceps_r_cm,
+            thighsCm: c.thighs_cm,
+            thighsLCm: c.thighs_l_cm,
+            thighsRCm: c.thighs_r_cm,
+          },
         }));
 
         setClientLogs({

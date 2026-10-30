@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { queueOfflineTransaction } from '../lib/offlineSync';
 import { computeFullHealthMetrics, CalculatedHealthMetrics, BodyStats } from '../lib/healthMetrics';
 import logger from '../lib/logger';
+import { localDayKey } from '../lib/dates';
+import { ensureUploaded, toDisplayUrls, storedRefFor, deleteMedia } from '../lib/photoStorage';
 
 export interface WeightLog {
   id: string;
@@ -58,6 +60,7 @@ interface ProgressState {
   addCheckinLog: (userId: string, logData: Omit<CheckinLog, 'id' | 'date'>) => void;
   deleteCheckinLog: (id: string) => void;
   getCalculatedMetrics: (profileStats: Partial<BodyStats>) => CalculatedHealthMetrics;
+  reset: () => void;
 }
 
 export const useProgressStore = create<ProgressState>((set, get) => ({
@@ -113,13 +116,17 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
         thighsRCm: latest.thighsRCm,
       };
 
-      const checkinPhotos = (photoRes.data || []).map(p => ({
-        id: p.id,
-        date: p.created_at,
-        photoUrl: p.photo_url,
-        photoUrls: [p.photo_url], // Since old schema used single URL
-        note: p.note
-      }));
+      const photoRows = photoRes.data || [];
+      const photoDisplay = await toDisplayUrls(photoRows.map((p: any) => p.photo_url));
+      const checkinPhotos = photoRows
+        .map((p: any, i: number) => ({
+          id: p.id,
+          date: p.created_at,
+          photoUrl: photoDisplay[i] as string,
+          photoUrls: [photoDisplay[i] as string], // Since old schema used single URL
+          note: p.note
+        }))
+        .filter((p: any) => !!p.photoUrl);
 
       // Reconstruct checkinLogs by grouping weight logs, body measurements, and photos by calendar date (YYYY-MM-DD)
       const logsByDay: Record<string, CheckinLog> = {};
@@ -127,7 +134,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       // 1. Process photos
       checkinPhotos.forEach(p => {
         if (!p.date) return;
-        const dayKey = p.date.substring(0, 10); // "YYYY-MM-DD"
+        const dayKey = localDayKey(p.date); // local "YYYY-MM-DD"
         if (!logsByDay[dayKey]) {
           logsByDay[dayKey] = {
             id: 'chk_' + dayKey,
@@ -154,7 +161,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       // 2. Process body measurements
       measurementsHistory.forEach(m => {
         if (!m.date) return;
-        const dayKey = m.date.substring(0, 10);
+        const dayKey = localDayKey(m.date);
         const measurements: Partial<BodyMeasurements> = {
           neckCm: m.neckCm,
           shouldersCm: m.shouldersCm,
@@ -195,7 +202,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       // 3. Process weight logs
       weightHistory.forEach(w => {
         if (!w.date) return;
-        const dayKey = w.date.substring(0, 10);
+        const dayKey = localDayKey(w.date);
         if (!logsByDay[dayKey]) {
           logsByDay[dayKey] = {
             id: 'chk_' + dayKey,
@@ -276,8 +283,13 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     set((state) => ({ checkinPhotos: [newPic, ...state.checkinPhotos] }));
     
     const payload = { user_id: userId, photo_url: photoUrl, note, created_at: newPic.date };
-    const { error } = await supabase.from('checkin_photos').insert(payload);
-    if (error) queueOfflineTransaction('ADD_CHECKIN', payload);
+    try {
+      payload.photo_url = (await ensureUploaded(photoUrl, 'checkins')) || photoUrl;
+      const { error } = await supabase.from('checkin_photos').insert(payload);
+      if (error) queueOfflineTransaction('ADD_CHECKIN', payload);
+    } catch (e) {
+      queueOfflineTransaction('ADD_CHECKIN', payload);
+    }
   },
 
   deleteCheckinPhoto: async (idOrUrl) => {
@@ -310,7 +322,9 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     });
 
     if (isUrl) {
-      await supabase.from('checkin_photos').delete().eq('photo_url', idOrUrl);
+      const ref = storedRefFor(idOrUrl);
+      const { error } = await supabase.from('checkin_photos').delete().eq('photo_url', ref);
+      if (!error) deleteMedia(ref);
     } else {
       await supabase.from('checkin_photos').delete().eq('id', idOrUrl);
     }
@@ -354,22 +368,54 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       };
     });
 
-    // Sync to Supabase
-    const promises = [];
+    // Sync to Supabase; anything that fails goes to the offline queue.
+    const date = newLog.date;
+    const tryInsert = async (
+      table: string,
+      row: any,
+      queueType: 'ADD_WEIGHT' | 'UPDATE_MEASUREMENTS' | 'ADD_CHECKIN',
+      queuePayload: any
+    ) => {
+      try {
+        const { error } = await supabase.from(table).insert(row);
+        if (error) queueOfflineTransaction(queueType, queuePayload);
+      } catch {
+        queueOfflineTransaction(queueType, queuePayload);
+      }
+    };
+
+    const jobs: Promise<void>[] = [];
     if (logData.weightKg) {
-      promises.push(supabase.from('weight_logs').insert({ user_id: userId, weight_kg: logData.weightKg, recorded_at: newLog.date }));
+      jobs.push(tryInsert('weight_logs', { user_id: userId, weight_kg: logData.weightKg, recorded_at: date },
+        'ADD_WEIGHT', { userId, weightKg: logData.weightKg, date }));
     }
     if (logData.measurements) {
-       promises.push(supabase.from('body_measurements').insert({ user_id: userId, ...logData.measurements, recorded_at: newLog.date }));
+      const m = logData.measurements;
+      const row = {
+        user_id: userId,
+        neck_cm: m.neckCm, shoulders_cm: m.shouldersCm, chest_cm: m.chestCm, waist_cm: m.waistCm,
+        hips_cm: m.hipsCm, biceps_cm: m.bicepsCm, biceps_l_cm: m.bicepsLCm, biceps_r_cm: m.bicepsRCm,
+        thighs_cm: m.thighsCm, thighs_l_cm: m.thighsLCm, thighs_r_cm: m.thighsRCm,
+        recorded_at: date,
+      };
+      jobs.push(tryInsert('body_measurements', row, 'UPDATE_MEASUREMENTS', row));
     }
-    if (logData.photoUrls && logData.photoUrls.length > 0) {
-       logData.photoUrls.forEach((url) => {
-         promises.push(supabase.from('checkin_photos').insert({ user_id: userId, photo_url: url, note: logData.note, created_at: newLog.date }));
-       });
-    } else if (logData.photoUrl) {
-       promises.push(supabase.from('checkin_photos').insert({ user_id: userId, photo_url: logData.photoUrl, note: logData.note, created_at: newLog.date }));
-    }
-    await Promise.all(promises);
+    const urls = logData.photoUrls && logData.photoUrls.length > 0
+      ? logData.photoUrls
+      : logData.photoUrl ? [logData.photoUrl] : [];
+    urls.forEach((url) => {
+      jobs.push((async () => {
+        const row = { user_id: userId, photo_url: url, note: logData.note, created_at: date };
+        try {
+          row.photo_url = (await ensureUploaded(url, 'checkins')) || url;
+        } catch {
+          queueOfflineTransaction('ADD_CHECKIN', row);
+          return;
+        }
+        await tryInsert('checkin_photos', row, 'ADD_CHECKIN', row);
+      })());
+    });
+    await Promise.all(jobs);
   },
 
   deleteCheckinLog: (id) => {
@@ -379,19 +425,24 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     }));
   },
 
+  // Pure calculation over the stats passed in. Callers pass the person's own
+  // numbers (this is also used for a trainer viewing a client, so it must not
+  // mix in the signed-in user's stored weight/measurements).
   getCalculatedMetrics: (profileStats) => {
-    const latestWeight = get().weightHistory[0]?.weightKg || profileStats.weightKg || 70;
     const stats: BodyStats = {
-      heightCm: profileStats.heightCm || 175,
-      weightKg: latestWeight,
+      heightCm: profileStats.heightCm || 0,
+      weightKg: profileStats.weightKg || 0,
       sex: profileStats.sex || 'MALE',
-      ageYears: 26,
-      neckCm: get().latestMeasurements.neckCm || profileStats.neckCm,
-      waistCm: get().latestMeasurements.waistCm || profileStats.waistCm,
-      hipsCm: get().latestMeasurements.hipsCm || profileStats.hipsCm,
+      ageYears: profileStats.ageYears,
+      neckCm: profileStats.neckCm,
+      waistCm: profileStats.waistCm,
+      hipsCm: profileStats.hipsCm,
       activityLevel: profileStats.activityLevel || 'MODERATELY_ACTIVE',
     };
 
     return computeFullHealthMetrics(stats);
   },
+
+  reset: () =>
+    set({ weightHistory: [], latestMeasurements: {}, checkinPhotos: [], checkinLogs: [], isLoading: false }),
 }));

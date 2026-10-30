@@ -36,8 +36,9 @@ export default function ScanMealScreen() {
   
   // Plate image details
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [isManualEntry, setIsManualEntry] = useState(false);
 
-  // Form states (populated after AI scan)
+  // Form states (populated after AI scan or manual entry)
   const [dishName, setDishName] = useState('');
   const [category, setCategory] = useState<'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACKS'>('BREAKFAST');
   const [items, setItems] = useState<FoodItem[]>([]);
@@ -100,11 +101,17 @@ export default function ScanMealScreen() {
       setCategory('BREAKFAST'); // Default category
 
       setLoading(false);
-    } catch (e) {
+    } catch (e: any) {
       setLoading(false);
-      setPhotoUri(null);
       logger.error('Scan Error:', e);
-      Alert.alert('Scan Error', 'Failed to analyze meal photo with AI. Please try again.');
+      // Keep the photo and let the user enter the meal by hand.
+      setIsManualEntry(true);
+      setDishName('');
+      setItems([]);
+      Alert.alert(
+        "Couldn't Analyze Photo",
+        `${e?.message || 'The meal analyzer failed.'} Add the items manually below, or start over to try another photo.`
+      );
     }
   };
 
@@ -142,20 +149,22 @@ export default function ScanMealScreen() {
   // Reset / start over
   const handleReset = () => {
     if (Platform.OS === 'web') {
-      const confirmReset = window.confirm('Are you sure you want to discard this image and start over?');
+      const confirmReset = window.confirm('Are you sure you want to discard and start over?');
       if (confirmReset) {
         setPhotoUri(null);
+        setIsManualEntry(false);
         setDishName('');
         setItems([]);
       }
     } else {
-      Alert.alert('Start Over', 'Are you sure you want to discard this image and start over?', [
+      Alert.alert('Start Over', 'Are you sure you want to discard and start over?', [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reset',
           style: 'destructive',
           onPress: () => {
             setPhotoUri(null);
+            setIsManualEntry(false);
             setDishName('');
             setItems([]);
           },
@@ -177,7 +186,7 @@ export default function ScanMealScreen() {
 
     try {
       setLoading(true);
-      await saveMealEntry({
+      const mealId = await saveMealEntry({
         userId: profile?.id || 'usr_1',
         dishName,
         category,
@@ -197,12 +206,14 @@ export default function ScanMealScreen() {
         eventType: 'LOG_MEAL',
         actionVerb: 'Logged',
         targetTitle: `${dishName} (${totalCalories} kcal)`,
+        mealId,
         tags: [
           { label: 'Nutrition', type: 'success' },
           { label: 'On Track', type: 'success' },
         ],
         timestamp: new Date().toISOString(),
       });
+
 
       setLoading(false);
       Alert.alert('Meal Logged', 'Your meal has been saved successfully!');
@@ -219,10 +230,16 @@ export default function ScanMealScreen() {
       <View style={styles.header}>
         <View>
           <Text style={[styles.title, { color: theme.text }]}>
-            {photoUri && !loading ? 'Verify & Edit Meal' : 'AI Plate Analyzer'}
+            {(photoUri || isManualEntry) && !loading
+              ? isManualEntry
+                ? 'Manual Meal Entry'
+                : 'Verify & Edit Meal'
+              : 'AI Plate Analyzer'}
           </Text>
           <Text style={[styles.headerSub, { color: theme.textSecondary }]}>
-            {photoUri && !loading ? 'Adjust components & portion macros' : 'Upload or snap a plate photo to compute macros'}
+            {(photoUri || isManualEntry) && !loading
+              ? 'Adjust components & portion macros'
+              : 'Upload or snap a plate photo to compute macros'}
           </Text>
         </View>
         <TouchableOpacity
@@ -237,7 +254,7 @@ export default function ScanMealScreen() {
       </View>
 
       {/* STATE 1: Idle (No photo selected yet) */}
-      {!photoUri && (
+      {!photoUri && !isManualEntry && (
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <View
             style={[
@@ -299,6 +316,41 @@ export default function ScanMealScreen() {
                   </Text>
                 </View>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.btnGallery,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                    ...theme.shadowButton,
+                    marginTop: 8,
+                  },
+                ]}
+                onPress={() => {
+                  setIsManualEntry(true);
+                  setDishName('');
+                  setCategory('BREAKFAST');
+                  setItems([
+                    {
+                      name: '',
+                      quantity: '1 serving',
+                      calories: 0,
+                      proteinG: 0,
+                      carbsG: 0,
+                      fatG: 0,
+                    },
+                  ]);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Ionicons name="create-outline" size={18} color={theme.isDark ? theme.accentGold : theme.primary} />
+                  <Text style={[styles.btnGalleryText, { color: theme.text }]}>
+                    Manual Entry (No Photo)
+                  </Text>
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -322,22 +374,38 @@ export default function ScanMealScreen() {
         </View>
       )}
 
-      {/* STATE 3: Edit Form (AI analysis complete, editable macro fields) */}
-      {photoUri && !loading && (
+      {/* STATE 3: Edit Form (AI analysis complete or Manual Entry mode) */}
+      {(photoUri || isManualEntry) && !loading && (
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Compact Image Preview Row */}
-          <View style={[styles.compactImageRow, { borderColor: theme.border }]}>
-            <Image source={{ uri: photoUri }} style={styles.compactPreviewImage} />
-            <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 12 }}>
-              <Text style={[styles.compactImageLabel, { color: theme.textSecondary }]}>PLATE IMAGE</Text>
-              <TouchableOpacity style={styles.changePhotoBtn} onPress={handleReset}>
-                <Ionicons name="refresh-outline" size={14} color={theme.isDark ? theme.accentGold : theme.primary} />
-                <Text style={[styles.changePhotoText, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
-                  Change Photo
-                </Text>
-              </TouchableOpacity>
+          {/* Compact Image Preview Row or Manual Mode Header */}
+          {photoUri ? (
+            <View style={[styles.compactImageRow, { borderColor: theme.border }]}>
+              <Image source={{ uri: photoUri }} style={styles.compactPreviewImage} />
+              <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 12 }}>
+                <Text style={[styles.compactImageLabel, { color: theme.textSecondary }]}>PLATE IMAGE</Text>
+                <TouchableOpacity style={styles.changePhotoBtn} onPress={handleReset}>
+                  <Ionicons name="refresh-outline" size={14} color={theme.isDark ? theme.accentGold : theme.primary} />
+                  <Text style={[styles.changePhotoText, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                    Change Photo
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={[styles.compactImageRow, { borderColor: theme.border, paddingVertical: 12, paddingHorizontal: 14 }]}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="create-outline" size={20} color={theme.isDark ? theme.accentGold : theme.primary} />
+                  <Text style={[styles.compactImageLabel, { color: theme.text, fontSize: 13, fontWeight: 'bold' }]}>
+                    MANUAL ENTRY MODE
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.changePhotoBtn} onPress={handleReset}>
+                  <Text style={[styles.changePhotoText, { color: theme.textMuted }]}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* Form Card */}
           <View style={[styles.formCard, { backgroundColor: theme.card, borderColor: theme.border, ...theme.shadow }]}>

@@ -34,10 +34,12 @@ import {
   getLengthUnitLabel,
 } from '../../lib/units';
 import logger from '../../lib/logger';
+import { ageFromDob } from '../../lib/dates';
 
+import { formatTrainerCodeInput, TRAINER_CODE_MAX_LENGTH, TRAINER_CODE_PLACEHOLDER } from '../../lib/trainerCode';
 export default function ProfileScreen() {
   useScreenPrivacy();
-  const { profile, role, trainerCode, linkedTrainerId, setProfile, unitSystem, unlinkTrainer, linkTrainer, updateAvatarUrl } = useAuthStore();
+  const { profile, role, trainerCode, linkedTrainerId, setProfile, unitSystem, unlinkTrainer, linkTrainer, updateAvatarUrl, updateDob } = useAuthStore();
   const theme = useTheme();
   const {
     weightHistory,
@@ -85,6 +87,9 @@ export default function ProfileScreen() {
   const [linkTrainerModalVisible, setLinkTrainerModalVisible] = useState(false);
   const [trainerCodeInput, setTrainerCodeInput] = useState('');
   const [isLinking, setIsLinking] = useState(false);
+  const [dobModalVisible, setDobModalVisible] = useState(false);
+  const [dobInput, setDobInput] = useState('');
+  const [isSavingDob, setIsSavingDob] = useState(false);
   const [expandedTimelineIds, setExpandedTimelineIds] = useState<string[]>(['PHOTO_pic_1']);
 
   const toggleTimelineExpand = (id: string) => {
@@ -189,6 +194,23 @@ export default function ProfileScreen() {
     }
   };
 
+  const openDobModal = () => {
+    setDobInput(profile?.dob ? profile.dob.substring(0, 10) : '');
+    setDobModalVisible(true);
+  };
+
+  const handleSaveDob = async () => {
+    const value = dobInput.trim();
+    if (value && ageFromDob(value) === undefined) {
+      Alert.alert('Invalid Date', 'Enter your date of birth as YYYY-MM-DD, for example 1995-08-21.');
+      return;
+    }
+    setIsSavingDob(true);
+    const ok = await updateDob(value || null);
+    setIsSavingDob(false);
+    if (ok) setDobModalVisible(false);
+  };
+
   // Check-In Modal state (All optional, start empty with placeholders showing current values)
   const [checkinModalVisible, setCheckinModalVisible] = useState(false);
   const [heightInput, setHeightInput] = useState('');
@@ -205,11 +227,12 @@ export default function ProfileScreen() {
 
   const stats = getCalculatedMetrics({
     heightCm: profile?.heightCm || 175,
-    weightKg: weightHistory[0]?.weightKg || 75,
+    weightKg: weightHistory[0]?.weightKg || profile?.weightKg || 75,
     sex: profile?.sex || 'MALE',
-    neckCm: latestMeasurements?.neckCm || 39,
-    waistCm: latestMeasurements?.waistCm || 84,
-    hipsCm: latestMeasurements?.hipsCm || 98,
+    ageYears: ageFromDob(profile?.dob),
+    neckCm: latestMeasurements?.neckCm,
+    waistCm: latestMeasurements?.waistCm,
+    hipsCm: latestMeasurements?.hipsCm,
     activityLevel: profile?.activityLevel || 'MODERATELY_ACTIVE',
   });
 
@@ -462,7 +485,7 @@ export default function ProfileScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.trainerCodeChipLabel, { color: theme.accentGold }]}>YOUR TRAINER CODE</Text>
-                  <Text style={[styles.trainerCodeChipVal, { color: theme.text }]}>Code: {trainerCode || 'TRN-882'}</Text>
+                  <Text style={[styles.trainerCodeChipVal, { color: theme.text }]}>Code: {trainerCode || '—'}</Text>
                 </View>
                 <TouchableOpacity
                   style={[
@@ -473,7 +496,7 @@ export default function ProfileScreen() {
                     },
                   ]}
                   onPress={() => {
-                    Alert.alert('Copied!', `Trainer code "${trainerCode || 'TRN-882'}" copied to clipboard.`);
+                    Alert.alert('Copied!', `Trainer code "${trainerCode || '—'}" copied to clipboard.`);
                   }}
                   activeOpacity={0.7}
                 >
@@ -660,7 +683,7 @@ export default function ProfileScreen() {
             >
               <Text style={[styles.metricLabel, { color: theme.accentGold }]}>BODY FAT %</Text>
               <Text style={[styles.metricVal, { color: theme.text }]}>
-                {stats.estimatedBodyFatPct ? `${stats.estimatedBodyFatPct}%` : '12%'}
+                {stats.estimatedBodyFatPct ? `${stats.estimatedBodyFatPct}%` : '—'}
               </Text>
               <Text style={[styles.metricSub, { color: theme.textSecondary }]}>U.S. Navy Method</Text>
             </View>
@@ -705,6 +728,30 @@ export default function ProfileScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Measurements</Text>
 
           <View style={styles.measurementsGrid}>
+            {/* Age (tap to add or change date of birth) */}
+            <TouchableOpacity
+              style={[
+                styles.measureTile,
+                { backgroundColor: theme.cardInner, borderColor: theme.border },
+              ]}
+              onPress={openDobModal}
+              activeOpacity={0.7}
+            >
+              <View style={styles.measureTileHeader}>
+                <Ionicons name="calendar-outline" size={14} color={theme.textSecondary} />
+                <Text style={[styles.measureTileLabel, { color: theme.textSecondary }]}>AGE</Text>
+              </View>
+              {ageFromDob(profile?.dob) !== undefined ? (
+                <Text style={[styles.measureTileVal, { color: theme.text }]}>
+                  {ageFromDob(profile?.dob)} yrs
+                </Text>
+              ) : (
+                <Text style={[styles.measureTileVal, { color: theme.isDark ? theme.accentGold : theme.primary, fontSize: 13 }]}>
+                  Add birth date
+                </Text>
+              )}
+            </TouchableOpacity>
+
             {/* Height */}
             <View
               style={[
@@ -999,7 +1046,7 @@ export default function ProfileScreen() {
                     heightCm: logHeight,
                     weightKg: logWeight,
                     sex: profile?.sex || 'MALE',
-                    ageYears: 26,
+                    ageYears: ageFromDob(profile?.dob),
                     neckCm: log.measurements?.neckCm || latestMeasurements?.neckCm || profile?.bodyMeasurements?.neckCm,
                     waistCm: log.measurements?.waistCm || latestMeasurements?.waistCm || profile?.bodyMeasurements?.waistCm,
                     hipsCm: log.measurements?.hipsCm || latestMeasurements?.hipsCm || profile?.bodyMeasurements?.hipsCm,
@@ -1177,7 +1224,7 @@ export default function ProfileScreen() {
 
                               <View style={styles.calcMetricCol}>
                                 <Text style={[styles.calcMetricVal, { color: theme.text }]}>
-                                  {metrics.estimatedBodyFatPct ? `${metrics.estimatedBodyFatPct.toFixed(1)}%` : '15.0%'}
+                                  {metrics.estimatedBodyFatPct ? `${metrics.estimatedBodyFatPct.toFixed(1)}%` : '—'}
                                 </Text>
                                 <Text style={[styles.calcMetricLabel, { color: theme.textMuted }]}>Est. Body Fat</Text>
                               </View>
@@ -1785,6 +1832,62 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
+      {/* DATE OF BIRTH MODAL */}
+      <Modal
+        visible={dobModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDobModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.linkModalContent, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.linkModalHeader}>
+              <Text style={[styles.linkModalTitle, { color: theme.text }]}>Date of Birth</Text>
+              <TouchableOpacity onPress={() => setDobModalVisible(false)}>
+                <Ionicons name="close-outline" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.linkModalSub, { color: theme.textSecondary }]}>
+              Used to calculate your BMR and calorie targets. Format YYYY-MM-DD. Leave empty to remove it.
+            </Text>
+
+            <TextInput
+              style={[
+                styles.linkModalInput,
+                {
+                  color: theme.text,
+                  backgroundColor: theme.cardInner,
+                  borderColor: theme.border,
+                },
+              ]}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.textMuted}
+              value={dobInput}
+              onChangeText={setDobInput}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+              autoCorrect={false}
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.linkSubmitBtn,
+                {
+                  backgroundColor: theme.isDark ? theme.accentGold : theme.primary,
+                },
+              ]}
+              onPress={handleSaveDob}
+              disabled={isSavingDob}
+            >
+              <Text style={[styles.linkSubmitBtnText, { color: theme.isDark ? '#0A1A12' : '#FFFFFF' }]}>
+                {isSavingDob ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* LINK TRAINER MODAL */}
       <Modal
         visible={linkTrainerModalVisible}
@@ -1802,7 +1905,7 @@ export default function ProfileScreen() {
             </View>
 
             <Text style={[styles.linkModalSub, { color: theme.textSecondary }]}>
-              Enter the unique trainer code provided by your coach (e.g. TRN-882).
+              Enter the unique trainer code provided by your coach (e.g. AB-12CD).
             </Text>
 
             <TextInput
@@ -1814,10 +1917,11 @@ export default function ProfileScreen() {
                   borderColor: theme.border,
                 },
               ]}
-              placeholder="TRN-XXXX"
+              placeholder={TRAINER_CODE_PLACEHOLDER}
               placeholderTextColor={theme.textMuted}
               value={trainerCodeInput}
-              onChangeText={setTrainerCodeInput}
+              onChangeText={(t) => setTrainerCodeInput(formatTrainerCodeInput(t))}
+              maxLength={TRAINER_CODE_MAX_LENGTH}
               autoCapitalize="characters"
               autoCorrect={false}
             />

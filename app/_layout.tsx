@@ -1,13 +1,16 @@
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Platform, AppState } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import logger from '../lib/logger';
 import { secureGetProfile } from '../lib/secureProfileCache';
+import { localDateStr } from '../lib/dates';
+import { processQueue } from '../lib/offlineSync';
+import { startRealtime } from '../lib/realtime';
 
 WebBrowser.maybeCompleteAuthSession();
 import { useAuthStore } from '../store/authStore';
@@ -97,9 +100,17 @@ export default function RootLayout() {
           const savedUnits = await AsyncStorage.getItem('@trainr_unit_system');
           if (savedUnits) await useAuthStore.getState().setUnitSystem(savedUnits as any);
         }
+        const savedStep = await AsyncStorage.getItem('@trainr_weight_step');
+        if (savedStep) {
+          const parsedStep = parseFloat(savedStep);
+          if (!isNaN(parsedStep) && parsedStep > 0) {
+            useAuthStore.getState().setWeightStep(parsedStep);
+          }
+        }
       } catch (e) {
         logger.warn('Failed to restore cached profile:', e);
       }
+
 
       const { data: { session: initialSession } } = await supabase.auth.getSession();
       if (initialSession) {
@@ -128,11 +139,32 @@ export default function RootLayout() {
       useAuthStore.getState().setIsAuthLoading(false);
     });
 
+    // Offline queue: retry when the app comes back to the foreground and
+    // every minute while anything is still pending.
+    const flushQueue = async () => {
+      const userId = useAuthStore.getState().session?.user?.id;
+      if (!userId) return;
+      const { synced } = await processQueue();
+      if (synced > 0) refreshPersonalData(userId);
+    };
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') flushQueue();
+    });
+    const retryTimer = setInterval(flushQueue, 60 * 1000);
+
     return () => {
       subscription.unsubscribe();
       linkSub.remove();
+      appStateSub.remove();
+      clearInterval(retryTimer);
     };
   }, []);
+
+  const refreshPersonalData = (userId: string) => {
+    useProgressStore.getState().fetchProgressData(userId);
+    useWorkoutStore.getState().fetchWorkoutData(userId);
+    useNutritionStore.getState().fetchNutritionData(userId, localDateStr());
+  };
 
   const syncAllData = async (userId: string) => {
     const authStore = useAuthStore.getState();
@@ -140,16 +172,18 @@ export default function RootLayout() {
     
     const profile = useAuthStore.getState().profile;
     if (profile) {
+      // Send anything saved while offline before loading, so it shows up.
+      await processQueue();
+
       // Fetch personal fitness stores for ALL accounts (both CLIENT and TRAINER)
-      useProgressStore.getState().fetchProgressData(userId);
-      useWorkoutStore.getState().fetchWorkoutData(userId);
-      const today = new Date().toISOString().split('T')[0];
-      useNutritionStore.getState().fetchNutritionData(userId, today);
+      refreshPersonalData(userId);
 
       // If user is a Trainer, additionally fetch their client roster
       if (profile.role === 'TRAINER') {
          useTrainerStore.getState().fetchRoster();
       }
+
+      startRealtime(userId, profile.role);
     }
   };
 

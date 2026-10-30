@@ -106,7 +106,9 @@ BEGIN
   END IF;
 
   SELECT * INTO v_trainer FROM trainr.users
-  WHERE trainer_code = upper(trim(p_code)) AND role = 'TRAINER';
+  -- Ignore case, spaces and the dash, so "ab 12cd" finds "AB-12CD".
+  WHERE replace(trainer_code, '-', '') = regexp_replace(upper(coalesce(p_code, '')), '[^A-Z0-9]', '', 'g')
+    AND role = 'TRAINER';
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Invalid Trainer Code or Trainer not found.' USING ERRCODE = 'P0002';
@@ -300,8 +302,10 @@ CREATE POLICY "Workout plan assignments insert" ON trainr.workout_plan_assignmen
     AND trainr.is_active_trainer_of(client_id)
   );
 
+-- The trainer can unassign; the client can remove an assigned plan from
+-- their own list (the trainer's plan itself is untouched).
 CREATE POLICY "Workout plan assignments delete" ON trainr.workout_plan_assignments
-  FOR DELETE TO authenticated USING (trainer_id = auth.uid());
+  FOR DELETE TO authenticated USING (auth.uid() IN (trainer_id, client_id));
 
 -- Workout logs
 CREATE POLICY "Workout logs select" ON trainr.workout_logs
@@ -392,5 +396,91 @@ CREATE POLICY "Custom exercises insert own" ON trainr.custom_exercises
 
 CREATE POLICY "Custom exercises delete own" ON trainr.custom_exercises
   FOR DELETE TO authenticated USING (created_by = auth.uid());
+
+-- --------------------------------------------------------------------
+-- 5. Account deletion (PRD 2.3 / 7.2)
+--    Deletes the caller's auth user; every trainr row cascades from it.
+--    The app removes the user's storage files first (storage objects
+--    cannot be deleted from SQL).
+-- --------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION trainr.delete_my_account()
+RETURNS VOID
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
+  END IF;
+  DELETE FROM auth.users WHERE id = v_uid;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION trainr.delete_my_account() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION trainr.delete_my_account() TO authenticated;
+
+-- --------------------------------------------------------------------
+-- 6. Photo storage: private bucket `trainr-media`
+--    Files live at <owner uuid>/<meals|checkins|avatars>/<file>.
+--    Owners manage their own files; an owner's active trainer and active
+--    clients may view them.
+-- --------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('trainr-media', 'trainr-media', false, 10485760,
+        ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/heic'])
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- True when the caller may view files owned by p_owner (a folder name).
+CREATE OR REPLACE FUNCTION trainr.can_view_user_media(p_owner TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_owner ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      p_owner::uuid = auth.uid()
+      OR trainr.is_active_trainer_of(p_owner::uuid)
+      OR p_owner::uuid = trainr.my_active_trainer_id()
+    ELSE FALSE
+  END;
+$$;
+
+REVOKE ALL ON FUNCTION trainr.can_view_user_media(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION trainr.can_view_user_media(TEXT) TO authenticated;
+
+DROP POLICY IF EXISTS "Trainr media read" ON storage.objects;
+DROP POLICY IF EXISTS "Trainr media upload own" ON storage.objects;
+DROP POLICY IF EXISTS "Trainr media delete own" ON storage.objects;
+
+CREATE POLICY "Trainr media read" ON storage.objects
+  FOR SELECT TO authenticated USING (
+    bucket_id = 'trainr-media' AND trainr.can_view_user_media((storage.foldername(name))[1])
+  );
+
+CREATE POLICY "Trainr media upload own" ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (
+    bucket_id = 'trainr-media' AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "Trainr media delete own" ON storage.objects
+  FOR DELETE TO authenticated USING (
+    bucket_id = 'trainr-media' AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- --------------------------------------------------------------------
+-- 7. Realtime: macro target changes reach the client app live (PRD 5.1)
+-- --------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'trainr' AND tablename = 'macro_targets'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE trainr.macro_targets;
+  END IF;
+END $$;
 
 COMMIT;

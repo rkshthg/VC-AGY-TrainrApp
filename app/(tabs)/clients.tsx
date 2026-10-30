@@ -62,21 +62,22 @@ export default function ClientsScreen() {
     setTargetFatInput(String(client.targetFat || 65));
   };
 
-  const handleSaveTargets = () => {
+  const handleSaveTargets = async () => {
     if (!targetModalClient) return;
     const calories = parseInt(targetCaloriesInput) || 2500;
     const protein = parseFloat(targetProteinInput) || 75;
     const carbs = parseFloat(targetCarbsInput) || 250;
     const fat = parseFloat(targetFatInput) || 65;
 
-    updateClientMacroTargets(targetModalClient.clientId, {
+    const name = targetModalClient.fullName;
+    setTargetModalClient(null);
+    const saved = await updateClientMacroTargets(targetModalClient.clientId, {
       calories,
       protein,
       carbs,
       fat,
     });
-    setTargetModalClient(null);
-    Alert.alert('Targets Updated', `Updated macro targets for ${targetModalClient.fullName}.`);
+    if (saved) Alert.alert('Targets Updated', `Updated macro targets for ${name}.`);
   };
 
   return (
@@ -337,6 +338,9 @@ export default function ClientsScreen() {
 
                       <Text style={[styles.planTitleText, { color: theme.textSecondary }]}>
                         Routine: {client.currentPlanTitle || 'No Active Plan'}
+                        {isAlert && client.attentionReasons && client.attentionReasons.length > 0
+                          ? `\n${client.attentionReasons.join(' • ')}`
+                          : ''}
                       </Text>
                     </View>
 

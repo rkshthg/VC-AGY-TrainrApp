@@ -34,7 +34,9 @@ export interface ClientActivityProps {
   updatedValues?: { label: string; value: string }[];
   initialLiked?: boolean;
   onPressCard?: () => void;
+  acknowledgedAt?: string;
 }
+
 
 export const ClientActivityCard: React.FC<ClientActivityProps> = ({
   clientName,
@@ -51,7 +53,9 @@ export const ClientActivityCard: React.FC<ClientActivityProps> = ({
   photoUrl,
   updatedValues,
   onPressCard,
+  acknowledgedAt,
 }) => {
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [internalAck, setInternalAck] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
@@ -360,48 +364,69 @@ export const ClientActivityCard: React.FC<ClientActivityProps> = ({
 
           {/* Trainer Action Bar inside Dropdown */}
           <View style={[styles.trainerActionBar, { borderTopColor: theme.border }]}>
-            <TouchableOpacity
-              style={[
-                styles.acknowledgedBtn,
-                {
-                  backgroundColor: acknowledged
-                    ? theme.isDark
-                      ? theme.accentGold
-                      : theme.primary
-                    : theme.cardInner,
-                  borderColor: acknowledged
-                    ? theme.isDark
-                      ? theme.accentGold
-                      : theme.primary
-                    : theme.border,
-                },
-              ]}
-              onPress={handleToggleAck}
-              activeOpacity={0.8}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons
-                  name={acknowledged ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                  size={16}
-                  color={acknowledged ? (theme.isDark ? '#0A1A12' : '#FFFFFF') : theme.textSecondary}
-                />
-                <Text
-                  style={[
-                    styles.acknowledgedBtnText,
-                    {
-                      color: acknowledged
-                        ? theme.isDark
-                          ? '#0A1A12'
-                          : '#FFFFFF'
-                        : theme.textSecondary,
-                    },
-                  ]}
-                >
-                  {acknowledged ? 'Acknowledged' : 'Mark Acknowledged'}
-                </Text>
+            {acknowledged ? (
+              <View
+                style={[
+                  styles.acknowledgedBtn,
+                  {
+                    backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                    borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                  },
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons
+                    name="checkmark-done-circle"
+                    size={16}
+                    color={theme.isDark ? theme.accentGold : theme.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.acknowledgedBtnText,
+                      {
+                        color: theme.isDark ? theme.accentGold : theme.primary,
+                      },
+                    ]}
+                  >
+                    {acknowledgedAt
+                      ? `Archived • Deletes in ${Math.max(1, 24 - Math.floor((Date.now() - new Date(acknowledgedAt).getTime()) / (1000 * 60 * 60)))}h`
+                      : 'Archived (Auto-deletes in 24h)'}
+                  </Text>
+                </View>
               </View>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.acknowledgedBtn,
+                  {
+                    backgroundColor: theme.cardInner,
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={handleToggleAck}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={16}
+                    color={theme.isDark ? theme.accentGold : theme.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.acknowledgedBtnText,
+                      {
+                        color: theme.isDark ? theme.accentGold : theme.primary,
+                      },
+                    ]}
+                  >
+                    Mark Acknowledged
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
+
         </>
       )}
 

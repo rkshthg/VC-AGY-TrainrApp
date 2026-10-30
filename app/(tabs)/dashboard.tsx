@@ -13,6 +13,7 @@ import { useWorkoutStore } from '../../store/workoutStore';
 import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
 import logger from '../../lib/logger';
+import { beginWorkout } from '../../lib/beginWorkout';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -50,8 +51,7 @@ export default function DashboardScreen() {
   };
 
   const handleStartWorkout = () => {
-    startSession();
-    router.push('/workout/active-session');
+    beginWorkout(router, () => startSession());
   };
 
   // Helper for 24h archive expiration
@@ -295,6 +295,7 @@ export default function DashboardScreen() {
                     targetTitle={card.targetTitle}
                     isAlert={card.isAlert}
                     isAcknowledged={card.isAcknowledged}
+                    acknowledgedAt={card.acknowledgedAt}
                     onToggleAcknowledge={() => toggleAcknowledgeEvent(card.id)}
                     tags={card.tags}
                     eventType={card.eventType}

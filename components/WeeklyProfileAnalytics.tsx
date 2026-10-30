@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { formatVolume, getWeightUnitLabel, convertWeight } from '../lib/units';
 import logger from '../lib/logger';
+import { localDateStr, localDayKey } from '../lib/dates';
 
 export type WorkoutMetricFilter = 'VOLUME' | 'DURATION' | 'REPS';
 export type NutritionMetricFilter = 'CALORIES' | 'PROTEIN';
@@ -87,7 +88,7 @@ export const WeeklyProfileAnalytics: React.FC<WeeklyProfileAnalyticsProps> = ({ 
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(now.getDate() - i);
-      const dayStr = d.toISOString().split('T')[0]; // "YYYY-MM-DD"
+      const dayStr = localDateStr(d); // local "YYYY-MM-DD"
 
       const dayName = dayNames[d.getDay()];
       const monthName = monthNames[d.getMonth()];
@@ -97,14 +98,8 @@ export const WeeklyProfileAnalytics: React.FC<WeeklyProfileAnalyticsProps> = ({ 
       const dayDescriptor = isToday ? 'Today' : isYesterday ? 'Yesterday' : dayName;
 
       // Filter data for this local day
-      const dayWorkouts = workouts.filter(w => {
-        const wDate = new Date(w.created_at);
-        return wDate.toLocaleDateString('en-CA') === dayStr;
-      });
-      const dayMeals = meals.filter(m => {
-        const mDate = new Date(m.created_at);
-        return mDate.toLocaleDateString('en-CA') === dayStr;
-      });
+      const dayWorkouts = workouts.filter(w => localDayKey(w.created_at) === dayStr);
+      const dayMeals = meals.filter(m => localDayKey(m.created_at) === dayStr);
 
       // Sum metrics
       const volKg = dayWorkouts.reduce((sum, w) => sum + Number(w.total_volume_kg || 0), 0);

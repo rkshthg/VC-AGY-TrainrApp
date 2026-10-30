@@ -76,7 +76,6 @@ serve(async (req) => {
 
     const modelsToTry = [
       'gemini-2.0-flash',
-      'gemini-1.5-flash',
       'gemini-flash-lite-latest',
     ];
 
@@ -121,7 +120,15 @@ serve(async (req) => {
 
     // Clean markdown code blocks if returned
     const cleanedText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const rawParsed = JSON.parse(cleanedText);
+    let rawParsed: any;
+    try {
+      rawParsed = JSON.parse(cleanedText);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'The AI response could not be read. Please try again.' }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const round1 = (val: number) => Math.round(val * 10) / 10;
 

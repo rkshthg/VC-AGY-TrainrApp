@@ -24,6 +24,9 @@ import { useTheme } from '../../lib/theme';
 import { formatWeight, formatVolume, formatHeight, formatLength } from '../../lib/units';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
+import { ageFromDob, localDateStr, localDayRangeISO } from '../../lib/dates';
+import { toDisplayUrls } from '../../lib/photoStorage';
+import { mapMealRows } from '../../store/nutritionStore';
 
 export default function ClientInspectionDetailScreen() {
   const router = useRouter();
@@ -59,8 +62,7 @@ export default function ClientInspectionDetailScreen() {
 
     const loadClientProfileData = async () => {
       try {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+        const startOfDay = new Date(localDayRangeISO(localDateStr()).start);
 
         const [userRes, weightRes, measurementRes, mealsRes, workoutsRes, prsRes, photosRes] = await Promise.all([
           supabase.from('users').select('*').eq('id', targetId).maybeSingle(),
@@ -74,7 +76,11 @@ export default function ClientInspectionDetailScreen() {
 
         if (!isMounted) return;
 
-        if (userRes.data) setClientProfile(userRes.data);
+        if (userRes.data) {
+          const [avatar] = await toDisplayUrls([userRes.data.avatar_url]);
+          if (!isMounted) return;
+          setClientProfile({ ...userRes.data, avatar_url: avatar });
+        }
         setClientWeightLogs(weightRes.data || []);
 
         const latestMeas = (measurementRes.data || [])[0] || {};
@@ -92,27 +98,8 @@ export default function ClientInspectionDetailScreen() {
           thighsRCm: latestMeas.thighs_r_cm,
         });
 
-        const meals: MealEntry[] = (mealsRes.data || []).map((m: any) => ({
-          id: m.id,
-          userId: m.user_id,
-          dishName: m.dish_name,
-          category: m.category,
-          timestamp: m.created_at,
-          photoUrl: m.photo_url,
-          totalCalories: m.total_calories,
-          totalProteinG: m.total_protein_g,
-          totalCarbsG: m.total_carbs_g,
-          totalFatG: m.total_fat_g,
-          items: (m.meal_items || []).map((i: any) => ({
-            id: i.id,
-            name: i.name,
-            quantity: i.quantity,
-            calories: i.calories,
-            proteinG: i.protein_g,
-            carbsG: i.carbs_g,
-            fatG: i.fat_g,
-          })),
-        }));
+        const meals: MealEntry[] = await mapMealRows(mealsRes.data || []);
+        if (!isMounted) return;
         setClientMeals(meals);
 
         const workouts: CompletedWorkoutHeader[] = (workoutsRes.data || []).map((log: any) => {
@@ -163,7 +150,12 @@ export default function ClientInspectionDetailScreen() {
         }));
         setClientPRs(parsedPRs);
 
-        setClientCheckinPhotos(photosRes.data || []);
+        const photoRows = photosRes.data || [];
+        const photoUrls = await toDisplayUrls(photoRows.map((p: any) => p.photo_url));
+        if (!isMounted) return;
+        setClientCheckinPhotos(
+          photoRows.map((p: any, i: number) => ({ ...p, photo_url: photoUrls[i] })).filter((p: any) => !!p.photo_url)
+        );
         setIsLoading(false);
       } catch (err) {
         logger.warn('Failed loading client inspection data:', err);
@@ -183,9 +175,10 @@ export default function ClientInspectionDetailScreen() {
     heightCm: clientProfile?.height_cm || 175,
     weightKg: latestWeightKg,
     sex: clientProfile?.sex || 'MALE',
-    neckCm: clientLatestMeasurements.neckCm || clientProfile?.body_measurements?.neckCm || 39,
-    waistCm: clientLatestMeasurements.waistCm || clientProfile?.body_measurements?.waistCm || 84,
-    hipsCm: clientLatestMeasurements.hipsCm || clientProfile?.body_measurements?.hipsCm || 98,
+    ageYears: ageFromDob(clientProfile?.dob),
+    neckCm: clientLatestMeasurements.neckCm,
+    waistCm: clientLatestMeasurements.waistCm,
+    hipsCm: clientLatestMeasurements.hipsCm,
     activityLevel: clientProfile?.activity_level || 'MODERATELY_ACTIVE',
   });
 
@@ -216,17 +209,17 @@ export default function ClientInspectionDetailScreen() {
     }
   };
 
-  const handleSaveTargets = () => {
+  const handleSaveTargets = async () => {
     if (!client) return;
     const calories = parseInt(targetCaloriesInput) || 2100;
-    updateClientMacroTargets(client.clientId, {
+    setEditModalVisible(false);
+    const saved = await updateClientMacroTargets(client.clientId, {
       calories,
       protein: Math.round((calories * 0.3) / 4),
       carbs: Math.round((calories * 0.4) / 4),
       fat: Math.round((calories * 0.3) / 9),
     });
-    setEditModalVisible(false);
-    Alert.alert('Targets Saved', `Updated target calories to ${calories} kcal.`);
+    if (saved) Alert.alert('Targets Saved', `Updated target calories to ${calories} kcal.`);
   };
 
   const targetCal = client?.targetCalories || 2500;
@@ -639,7 +632,7 @@ export default function ClientInspectionDetailScreen() {
               ]}
             >
               <Text style={[styles.metricValue, { color: theme.text }]}>
-                {healthStats.estimatedBodyFatPct !== null ? `${healthStats.estimatedBodyFatPct}%` : '16.4%'}
+                {healthStats.estimatedBodyFatPct !== null ? `${healthStats.estimatedBodyFatPct}%` : '—'}
               </Text>
               <Text style={[styles.metricName, { color: theme.textSecondary }]}>Estimated Body Fat %</Text>
               <Text

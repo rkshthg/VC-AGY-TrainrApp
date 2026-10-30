@@ -46,36 +46,6 @@ Your output must return ONLY raw JSON (no markdown, no backticks, no explanation
 Do NOT include markdown formatting or backticks around the JSON.
 `;
 
-const LOCAL_MEAL_PRESETS: AIMealScanResult[] = [
-  {
-    dishName: 'Chicken Biryani with Cucumber Raita',
-    confidenceScore: 0.94,
-    identifiedItems: [
-      { name: 'Chicken Biryani', quantity: '1 plate (300g)', calories: 580, proteinG: 32.0, carbsG: 68.0, fatG: 20.0 },
-      { name: 'Cucumber Raita', quantity: '1 bowl (100g)', calories: 40, proteinG: 2.0, carbsG: 4.0, fatG: 1.5 },
-    ],
-    totalCalories: 620,
-    totalProteinG: 34.0,
-    totalCarbsG: 72.0,
-    totalFatG: 21.5,
-    notes: 'Complete balanced protein meal.'
-  },
-  {
-    dishName: 'Masala Dosa with Sambhar & Coconut Chutney',
-    confidenceScore: 0.93,
-    identifiedItems: [
-      { name: 'Masala Dosa', quantity: '1 piece (150g)', calories: 250, proteinG: 5.0, carbsG: 42.0, fatG: 8.5 },
-      { name: 'Sambhar', quantity: '1 bowl (150ml)', calories: 110, proteinG: 5.0, carbsG: 15.0, fatG: 2.5 },
-      { name: 'Coconut Chutney', quantity: '2 tbsp (30g)', calories: 75, proteinG: 1.0, carbsG: 3.0, fatG: 7.0 },
-    ],
-    totalCalories: 435,
-    totalProteinG: 11.0,
-    totalCarbsG: 60.0,
-    totalFatG: 18.0,
-    notes: 'Popular vegetarian breakfast choice.'
-  }
-];
-
 /**
  * Convert local file URI to clean base64 data string
  */
@@ -101,9 +71,13 @@ async function uriToBase64(uri: string): Promise<string | null> {
 
 import { supabase } from './supabase';
 
+/** Thrown when the meal photo could not be analyzed. */
+export class MealScanError extends Error {}
+
 /**
- * Analyzes a meal photo using secure Supabase Proxy / Backend Edge Function with local presets fallbacks.
- * Supports both direct base64 and photo URI inputs.
+ * Analyzes a meal photo via the `analyze-meal` Supabase Edge Function (or a
+ * custom proxy URL). Throws MealScanError on failure; it never returns
+ * made-up results, so the user can fall back to manual entry.
  */
 export async function analyzeMealImage(
   photoUriOrBase64: string,
@@ -122,8 +96,12 @@ export async function analyzeMealImage(
     }
   }
 
-  // Tier 1: Secure Backend Proxy Call (Supabase Edge Function or custom Proxy URL)
-  if (finalBase64) {
+  if (!finalBase64) {
+    throw new MealScanError('Could not read the photo.');
+  }
+
+  let failure = 'The meal analyzer is unavailable right now.';
+  {
     try {
       // 1A. If custom proxy URL specified in .env, call it directly
       if (proxyUrl) {
@@ -136,8 +114,11 @@ export async function analyzeMealImage(
 
         if (res.ok) {
           const parsedResult: AIMealScanResult = await res.json();
-          logger.log('[AI Vision] Successfully received scan result from proxy URL');
-          return parsedResult;
+          if (isUsableResult(parsedResult)) {
+            logger.log('[AI Vision] Successfully received scan result from proxy URL');
+            return parsedResult;
+          }
+          failure = 'No food could be identified in this photo.';
         } else {
           logger.warn(`[AI Vision] Custom proxy returned status ${res.status}`);
         }
@@ -148,27 +129,24 @@ export async function analyzeMealImage(
           body: { imageBase64: finalBase64 },
         });
 
-        if (!error && data && data.dishName) {
+        if (!error && isUsableResult(data)) {
           logger.log('[AI Vision] Successfully received scan result from Supabase Edge Function');
           return data as AIMealScanResult;
         } else if (error) {
           logger.warn('[AI Vision] Supabase Edge Function invocation failed:', error.message || error);
+        } else {
+          failure = 'No food could be identified in this photo.';
         }
       }
     } catch (err) {
-      logger.warn('[AI Vision] Proxy request failed, falling back to presets:', err);
+      logger.warn('[AI Vision] Meal analysis request failed:', err);
+      failure = 'Could not reach the meal analyzer. Check your connection.';
     }
   }
 
-  // Tier 2: On-Device Local AI Fallback (Preset database)
-  logger.log('[Gemini AI] Falling back to local meal preset database');
-  await new Promise((res) => setTimeout(res, 1200)); // Simulate processing delay
+  throw new MealScanError(failure);
+}
 
-  const seedStr = photoUriOrBase64 || 'default';
-  const index = Math.abs(seedStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % LOCAL_MEAL_PRESETS.length;
-  const selectedPreset = LOCAL_MEAL_PRESETS[index];
-
-  return {
-    ...selectedPreset,
-  };
+function isUsableResult(data: any): data is AIMealScanResult {
+  return !!data && typeof data.dishName === 'string' && Array.isArray(data.identifiedItems) && data.identifiedItems.length > 0;
 }

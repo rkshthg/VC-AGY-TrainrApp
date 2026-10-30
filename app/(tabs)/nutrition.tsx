@@ -18,13 +18,28 @@ import { SettingsDrawer } from '../../components/SettingsDrawer';
 import { NutritionChart } from '../../components/NutritionChart';
 import { useNutritionStore } from '../../store/nutritionStore';
 import { useAuthStore } from '../../store/authStore';
+import { useTrainerStore } from '../../store/trainerStore';
 import { useTheme } from '../../lib/theme';
 import logger from '../../lib/logger';
+
+const COMMON_FOOD_PRESETS = [
+  { name: 'Eggs (2 boiled)', calories: 140, p: 12, c: 1, f: 10 },
+  { name: 'Whey Protein (1 scoop)', calories: 130, p: 25, c: 3, f: 2 },
+  { name: 'Chicken Breast (150g)', calories: 240, p: 46, c: 0, f: 5 },
+  { name: 'Oats with Milk', calories: 300, p: 12, c: 48, f: 6 },
+  { name: 'Greek Yogurt (200g)', calories: 130, p: 20, c: 8, f: 0 },
+  { name: 'White Rice (1 cup)', calories: 200, p: 4, c: 45, f: 0 },
+  { name: 'Paneer (100g)', calories: 265, p: 18, c: 4, f: 20 },
+  { name: 'Banana (medium)', calories: 105, p: 1, c: 27, f: 0 },
+  { name: 'Almonds (30g)', calories: 170, p: 6, c: 6, f: 15 },
+  { name: 'Whole Wheat Toast (2)', calories: 160, p: 7, c: 28, f: 2 },
+];
 
 export default function NutritionScreen() {
   const router = useRouter();
   const { todayMeals, deleteMealEntry, saveMealEntry, fetchTodayMeals, fetchAllMeals } = useNutritionStore();
   const profile = useAuthStore((state) => state.profile);
+  const addLiveFeedEvent = useTrainerStore((state) => state.addLiveFeedEvent);
   const theme = useTheme();
 
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -58,10 +73,10 @@ export default function NutritionScreen() {
   const [quickAddModalVisible, setQuickAddModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACKS'>('LUNCH');
   const [dishTitleInput, setDishTitleInput] = useState('');
-  const [caloriesInput, setCaloriesInput] = useState('450');
-  const [proteinInput, setProteinInput] = useState('30');
-  const [carbsInput, setCarbsInput] = useState('45');
-  const [fatInput, setFatInput] = useState('15');
+  const [caloriesInput, setCaloriesInput] = useState('');
+  const [proteinInput, setProteinInput] = useState('');
+  const [carbsInput, setCarbsInput] = useState('');
+  const [fatInput, setFatInput] = useState('');
 
   const handleDelete = (id: string, name: string) => {
     if (Platform.OS === 'web') {
@@ -80,25 +95,33 @@ export default function NutritionScreen() {
   const handleOpenQuickAdd = (category: 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACKS') => {
     setSelectedCategory(category);
     setDishTitleInput('');
-    setCaloriesInput('450');
-    setProteinInput('30');
-    setCarbsInput('45');
-    setFatInput('15');
+    setCaloriesInput('');
+    setProteinInput('');
+    setCarbsInput('');
+    setFatInput('');
     setQuickAddModalVisible(true);
   };
 
-  const handleSaveQuickAdd = () => {
+  const handleSelectPreset = (preset: (typeof COMMON_FOOD_PRESETS)[0]) => {
+    setDishTitleInput(preset.name);
+    setCaloriesInput(String(preset.calories));
+    setProteinInput(String(preset.p));
+    setCarbsInput(String(preset.c));
+    setFatInput(String(preset.f));
+  };
+
+  const handleSaveQuickAdd = async () => {
     if (!dishTitleInput.trim()) {
       Alert.alert('Missing Title', 'Please enter a dish name.');
       return;
     }
 
-    const totalCal = parseInt(caloriesInput) || 450;
-    const totalP = parseFloat(proteinInput) || 30;
-    const totalC = parseFloat(carbsInput) || 45;
-    const totalF = parseFloat(fatInput) || 15;
+    const totalCal = parseInt(caloriesInput) || 0;
+    const totalP = parseFloat(proteinInput) || 0;
+    const totalC = parseFloat(carbsInput) || 0;
+    const totalF = parseFloat(fatInput) || 0;
 
-    saveMealEntry({
+    const savedMealId = await saveMealEntry({
       userId: profile?.id || 'usr_1',
       dishName: dishTitleInput.trim(),
       category: selectedCategory,
@@ -119,8 +142,29 @@ export default function NutritionScreen() {
       ],
     });
 
+    addLiveFeedEvent({
+      clientId: profile?.id || 'usr_1',
+      clientName: profile?.fullName || 'Client',
+      avatarUrl: profile?.avatarUrl,
+      eventType: 'LOG_MEAL',
+      actionVerb: 'Logged',
+      targetTitle: `${selectedCategory.charAt(0) + selectedCategory.slice(1).toLowerCase()} (${dishTitleInput.trim()})`,
+      breakdownItems: [
+        {
+          title: dishTitleInput.trim(),
+          subtitle: `P: ${totalP}g • C: ${totalC}g • F: ${totalF}g`,
+          value: `${totalCal} kcal`,
+        },
+      ],
+      tags: [
+        { label: `${totalCal} kcal`, type: 'info' },
+        { label: `${totalP}g P`, type: 'success' },
+      ],
+      timestamp: new Date().toISOString(),
+      mealId: savedMealId,
+    });
+
     setQuickAddModalVisible(false);
-    Alert.alert('Meal Logged', `Logged ${dishTitleInput.trim()} under ${selectedCategory}.`);
   };
 
   const mealCategories: Array<{
@@ -255,7 +299,7 @@ export default function NutritionScreen() {
                 ]}
               >
                 {/* Category Header Row */}
-                <View style={styles.categoryCardHeader}>
+                <View style={[styles.categoryCardHeader, { justifyContent: 'space-between' }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Ionicons
                       name={cat.iconName}
@@ -272,12 +316,36 @@ export default function NutritionScreen() {
                       {catCalories} kcal
                     </Text>
                   </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.quickAddCategoryBtn,
+                      {
+                        backgroundColor: theme.isDark ? theme.badgeBg : '#E8F5E9',
+                        borderColor: theme.isDark ? theme.accentGold : theme.primary,
+                      },
+                    ]}
+                    onPress={() => handleOpenQuickAdd(cat.type)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={13} color={theme.isDark ? theme.accentGold : theme.primary} />
+                    <Text style={[styles.quickAddCategoryBtnText, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                      Add
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 {catMeals.length === 0 ? (
-                  <Text style={[styles.categoryEmptyText, { color: theme.textMuted }]}>
-                    No {cat.title.toLowerCase()} logged
-                  </Text>
+                  <View style={styles.emptyCatRow}>
+                    <Text style={[styles.categoryEmptyText, { color: theme.textMuted }]}>
+                      No {cat.title.toLowerCase()} logged
+                    </Text>
+                    <TouchableOpacity onPress={() => handleOpenQuickAdd(cat.type)}>
+                      <Text style={[styles.emptyCatAddText, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                        + Log {cat.title}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 ) : (
                   catMeals.map((meal) => {
                     const isGenericCategoryName =
@@ -601,6 +669,28 @@ export default function NutritionScreen() {
               })}
             </View>
 
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Quick Presets / Suggestions</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              {COMMON_FOOD_PRESETS.map((p, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    styles.presetChip,
+                    {
+                      backgroundColor: theme.cardInner,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                  onPress={() => handleSelectPreset(p)}
+                >
+                  <Text style={[styles.presetChipText, { color: theme.text }]}>{p.name}</Text>
+                  <Text style={[styles.presetChipSub, { color: theme.isDark ? theme.accentGold : theme.primary }]}>
+                    {p.calories} kcal
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Dish Title / Item Name</Text>
             <TextInput
               style={[
@@ -630,6 +720,8 @@ export default function NutritionScreen() {
                     },
                   ]}
                   value={caloriesInput}
+                  placeholder="0"
+                  placeholderTextColor={theme.textMuted}
                   keyboardType="numeric"
                   onChangeText={setCaloriesInput}
                 />
@@ -646,6 +738,8 @@ export default function NutritionScreen() {
                     },
                   ]}
                   value={proteinInput}
+                  placeholder="0"
+                  placeholderTextColor={theme.textMuted}
                   keyboardType="numeric"
                   onChangeText={setProteinInput}
                 />
@@ -665,6 +759,8 @@ export default function NutritionScreen() {
                     },
                   ]}
                   value={carbsInput}
+                  placeholder="0"
+                  placeholderTextColor={theme.textMuted}
                   keyboardType="numeric"
                   onChangeText={setCarbsInput}
                 />
@@ -681,6 +777,8 @@ export default function NutritionScreen() {
                     },
                   ]}
                   value={fatInput}
+                  placeholder="0"
+                  placeholderTextColor={theme.textMuted}
                   keyboardType="numeric"
                   onChangeText={setFatInput}
                 />
@@ -1010,5 +1108,58 @@ const styles = StyleSheet.create({
   modalSaveText: {
     fontSize: 13,
     fontWeight: 'bold',
+  },
+  quickAddHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  quickAddHeaderBtnText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  quickAddCategoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  quickAddCategoryBtnText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  emptyCatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  emptyCatAddText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  presetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginRight: 6,
+    alignItems: 'center',
+  },
+  presetChipText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  presetChipSub: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    marginTop: 1,
   },
 });
