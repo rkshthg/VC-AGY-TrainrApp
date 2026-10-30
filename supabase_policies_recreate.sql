@@ -1,14 +1,44 @@
 -- ====================================================================
 -- SUPABASE RLS POLICIES FOR TRAINR
+-- Safe to re-run: drops every existing policy in the trainr schema and
+-- recreates the full set inside one transaction.
+-- Run AFTER supabase_schema.sql.
 -- ====================================================================
 
--- 1. Enable RLS on all trainr tables
+BEGIN;
+
+-- --------------------------------------------------------------------
+-- 0. Lock down table access
+--    Logged-out users (anon) get nothing. Logged-in users go through RLS.
+-- --------------------------------------------------------------------
+REVOKE ALL ON ALL TABLES IN SCHEMA trainr FROM anon;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA trainr FROM anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA trainr REVOKE ALL ON TABLES FROM anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA trainr REVOKE ALL ON SEQUENCES FROM anon;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA trainr TO authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA trainr TO service_role;
+
+-- trainer_clients rows are created only by link_trainer_by_code().
+-- Either party may only change the status column (to unlink).
+REVOKE INSERT, UPDATE, DELETE ON trainr.trainer_clients FROM authenticated;
+GRANT UPDATE (status) ON trainr.trainer_clients TO authenticated;
+
+-- Trainers may only flip the acknowledgement fields on feed events.
+REVOKE UPDATE ON trainr.trainer_feed_events FROM authenticated;
+GRANT UPDATE (is_acknowledged, acknowledged_at) ON trainr.trainer_feed_events TO authenticated;
+
+-- --------------------------------------------------------------------
+-- 1. Enable RLS on every trainr table
+-- --------------------------------------------------------------------
 ALTER TABLE trainr.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.trainer_clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.macro_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.meals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.meal_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trainr.workout_plan_days ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trainr.workout_plan_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_plan_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_log_sets ENABLE ROW LEVEL SECURITY;
@@ -17,225 +47,350 @@ ALTER TABLE trainr.checkin_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.weight_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.personal_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.trainer_feed_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trainr.custom_exercises ENABLE ROW LEVEL SECURITY;
 
--- 2. Drop existing policies to avoid conflicts
-DROP POLICY IF EXISTS "Users read own profile" ON trainr.users;
-DROP POLICY IF EXISTS "Users update own profile" ON trainr.users;
-DROP POLICY IF EXISTS "Users insert own profile" ON trainr.users;
-DROP POLICY IF EXISTS "Trainer clients select" ON trainr.trainer_clients;
-DROP POLICY IF EXISTS "Trainer clients insert delete" ON trainr.trainer_clients;
-DROP POLICY IF EXISTS "Macro targets select own or trainer" ON trainr.macro_targets;
-DROP POLICY IF EXISTS "Macro targets insert own" ON trainr.macro_targets;
-DROP POLICY IF EXISTS "Macro targets update own" ON trainr.macro_targets;
-DROP POLICY IF EXISTS "Meals owner or trainer select" ON trainr.meals;
-DROP POLICY IF EXISTS "Meals insert own" ON trainr.meals;
-DROP POLICY IF EXISTS "Meal items select own or trainer" ON trainr.meal_items;
-DROP POLICY IF EXISTS "Meal items insert own" ON trainr.meal_items;
-DROP POLICY IF EXISTS "Workout plan assignments select" ON trainr.workout_plan_assignments;
-DROP POLICY IF EXISTS "Workout plan assignments insert update delete" ON trainr.workout_plan_assignments;
-DROP POLICY IF EXISTS "Workout logs owner or trainer select" ON trainr.workout_logs;
-DROP POLICY IF EXISTS "Workout logs insert own" ON trainr.workout_logs;
-DROP POLICY IF EXISTS "Workout log sets select own or trainer" ON trainr.workout_log_sets;
-DROP POLICY IF EXISTS "Workout log sets insert own" ON trainr.workout_log_sets;
-DROP POLICY IF EXISTS "Body measurements select own or trainer" ON trainr.body_measurements;
-DROP POLICY IF EXISTS "Body measurements insert own" ON trainr.body_measurements;
-DROP POLICY IF EXISTS "Checkin photos owner or trainer select" ON trainr.checkin_photos;
-DROP POLICY IF EXISTS "Checkin photos insert own" ON trainr.checkin_photos;
-DROP POLICY IF EXISTS "Weight logs owner or trainer select" ON trainr.weight_logs;
-DROP POLICY IF EXISTS "Weight logs insert own" ON trainr.weight_logs;
-DROP POLICY IF EXISTS "Personal records owner or trainer select" ON trainr.personal_records;
-DROP POLICY IF EXISTS "Personal records insert own" ON trainr.personal_records;
-DROP POLICY IF EXISTS "Trainer feed events select" ON trainr.trainer_feed_events;
-DROP POLICY IF EXISTS "Trainer feed events insert update" ON trainr.trainer_feed_events;
+-- --------------------------------------------------------------------
+-- 2. Helper functions
+--    SECURITY DEFINER so policies can check relationships without
+--    recursing through other tables' RLS.
+-- --------------------------------------------------------------------
 
--- 3. Create RLS Policies
+-- True when the caller is the ACTIVE trainer of p_client_id.
+CREATE OR REPLACE FUNCTION trainr.is_active_trainer_of(p_client_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM trainr.trainer_clients tc
+    WHERE tc.trainer_id = auth.uid()
+      AND tc.client_id = p_client_id
+      AND tc.status = 'ACTIVE'
+  );
+$$;
 
--- Users
-CREATE POLICY "Users read own profile" ON trainr.users
-  FOR SELECT USING (
-    auth.uid() = id 
-    OR id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid())
-    OR role = 'TRAINER'
+-- The caller's current ACTIVE trainer, or NULL.
+CREATE OR REPLACE FUNCTION trainr.my_active_trainer_id()
+RETURNS UUID
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT tc.trainer_id FROM trainr.trainer_clients tc
+  WHERE tc.client_id = auth.uid() AND tc.status = 'ACTIVE'
+  ORDER BY tc.created_at DESC
+  LIMIT 1;
+$$;
+
+-- True when the caller created the plan.
+CREATE OR REPLACE FUNCTION trainr.owns_plan(p_plan_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM trainr.workout_plans wp
+    WHERE wp.id = p_plan_id AND wp.created_by = auth.uid()
+  );
+$$;
+
+-- Link the caller (as client) to the trainer that owns p_code.
+-- Replaces the old client-side lookup, so trainer profiles no longer
+-- need to be publicly readable. Enforces one active trainer per client.
+CREATE OR REPLACE FUNCTION trainr.link_trainer_by_code(p_code TEXT)
+RETURNS JSON
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_trainer trainr.users%ROWTYPE;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT * INTO v_trainer FROM trainr.users
+  WHERE trainer_code = upper(trim(p_code)) AND role = 'TRAINER';
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Invalid Trainer Code or Trainer not found.' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF v_trainer.id = v_uid THEN
+    RAISE EXCEPTION 'You cannot link to your own Trainer Code.' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE trainr.trainer_clients
+     SET status = 'UNLINKED'
+   WHERE client_id = v_uid AND trainer_id <> v_trainer.id AND status = 'ACTIVE';
+
+  INSERT INTO trainr.trainer_clients (trainer_id, client_id, status)
+  VALUES (v_trainer.id, v_uid, 'ACTIVE')
+  ON CONFLICT (trainer_id, client_id) DO UPDATE SET status = 'ACTIVE';
+
+  UPDATE trainr.users SET linked_trainer_id = v_trainer.id WHERE id = v_uid;
+
+  RETURN json_build_object(
+    'id', v_trainer.id,
+    'full_name', v_trainer.full_name,
+    'trainer_code', v_trainer.trainer_code
+  );
+END;
+$$;
+
+-- When a relationship is unlinked (by either side), clear the client's
+-- linked_trainer_id so the client app stops showing that trainer.
+CREATE OR REPLACE FUNCTION trainr.handle_trainer_unlink()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.status = 'UNLINKED' AND OLD.status IS DISTINCT FROM 'UNLINKED' THEN
+    UPDATE trainr.users
+       SET linked_trainer_id = NULL
+     WHERE id = NEW.client_id AND linked_trainer_id = NEW.trainer_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trainer_clients_unlink ON trainr.trainer_clients;
+CREATE TRIGGER trainer_clients_unlink
+  AFTER UPDATE OF status ON trainr.trainer_clients
+  FOR EACH ROW EXECUTE FUNCTION trainr.handle_trainer_unlink();
+
+REVOKE ALL ON FUNCTION trainr.is_active_trainer_of(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION trainr.my_active_trainer_id() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION trainr.owns_plan(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION trainr.link_trainer_by_code(TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION trainr.handle_trainer_unlink() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION trainr.is_active_trainer_of(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION trainr.my_active_trainer_id() TO authenticated;
+GRANT EXECUTE ON FUNCTION trainr.owns_plan(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION trainr.link_trainer_by_code(TEXT) TO authenticated;
+
+-- --------------------------------------------------------------------
+-- 3. Drop every existing policy in the schema
+-- --------------------------------------------------------------------
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT policyname, tablename FROM pg_policies WHERE schemaname = 'trainr' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON trainr.%I', r.policyname, r.tablename);
+  END LOOP;
+END $$;
+
+-- --------------------------------------------------------------------
+-- 4. Policies
+--    Rule of thumb: you own your rows; your ACTIVE trainer can read them.
+-- --------------------------------------------------------------------
+
+-- Users: yourself, your active clients, and your active trainer.
+CREATE POLICY "Users select" ON trainr.users
+  FOR SELECT TO authenticated USING (
+    id = auth.uid()
+    OR trainr.is_active_trainer_of(id)
+    OR id = trainr.my_active_trainer_id()
   );
 
-CREATE POLICY "Users update own profile" ON trainr.users
-  FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users insert own" ON trainr.users
+  FOR INSERT TO authenticated WITH CHECK (id = auth.uid());
 
-CREATE POLICY "Users insert own profile" ON trainr.users
-  FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users update own" ON trainr.users
+  FOR UPDATE TO authenticated USING (id = auth.uid()) WITH CHECK (id = auth.uid());
 
--- Trainer Clients
+-- Trainer-client links: both parties can see and unlink (status only,
+-- enforced by the column grant above). New links only via the function.
 CREATE POLICY "Trainer clients select" ON trainr.trainer_clients
-  FOR SELECT USING (auth.uid() = trainer_id OR auth.uid() = client_id);
+  FOR SELECT TO authenticated USING (auth.uid() IN (trainer_id, client_id));
 
-CREATE POLICY "Trainer clients insert delete" ON trainr.trainer_clients
-  FOR ALL USING (auth.uid() = trainer_id OR auth.uid() = client_id);
+CREATE POLICY "Trainer clients unlink" ON trainr.trainer_clients
+  FOR UPDATE TO authenticated
+  USING (auth.uid() IN (trainer_id, client_id))
+  WITH CHECK (auth.uid() IN (trainer_id, client_id) AND status = 'UNLINKED');
 
--- Macro Targets
-CREATE POLICY "Macro targets select own or trainer" ON trainr.macro_targets
-  FOR SELECT USING (auth.uid() = user_id OR user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+-- Macro targets: owner, plus the active trainer may set them (PRD 2.1).
+CREATE POLICY "Macro targets select" ON trainr.macro_targets
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
-CREATE POLICY "Macro targets insert own" ON trainr.macro_targets
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Macro targets insert" ON trainr.macro_targets
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
-CREATE POLICY "Macro targets update own" ON trainr.macro_targets
-  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Macro targets update" ON trainr.macro_targets
+  FOR UPDATE TO authenticated
+  USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id))
+  WITH CHECK (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
 -- Meals
-CREATE POLICY "Meals owner or trainer select" ON trainr.meals
-  FOR SELECT USING (auth.uid() = user_id OR user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+CREATE POLICY "Meals select" ON trainr.meals
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
 CREATE POLICY "Meals insert own" ON trainr.meals
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
--- Meal Items
-CREATE POLICY "Meal items select own or trainer" ON trainr.meal_items
-  FOR SELECT USING (
+CREATE POLICY "Meals update own" ON trainr.meals
+  FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Meals delete own" ON trainr.meals
+  FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- Meal items (follow the parent meal)
+CREATE POLICY "Meal items select" ON trainr.meal_items
+  FOR SELECT TO authenticated USING (
     EXISTS (
-      SELECT 1 FROM trainr.meals
-      WHERE meals.id = meal_items.meal_id
-      AND (meals.user_id = auth.uid() OR meals.user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()))
+      SELECT 1 FROM trainr.meals m
+      WHERE m.id = meal_items.meal_id
+        AND (m.user_id = auth.uid() OR trainr.is_active_trainer_of(m.user_id))
     )
   );
 
 CREATE POLICY "Meal items insert own" ON trainr.meal_items
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM trainr.meals
-      WHERE meals.id = meal_items.meal_id
-      AND meals.user_id = auth.uid()
-    )
+  FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM trainr.meals m WHERE m.id = meal_items.meal_id AND m.user_id = auth.uid())
   );
 
--- Workout Plans
-DROP POLICY IF EXISTS "Workout plans select" ON trainr.workout_plans;
-DROP POLICY IF EXISTS "Workout plans insert update delete" ON trainr.workout_plans;
+CREATE POLICY "Meal items delete own" ON trainr.meal_items
+  FOR DELETE TO authenticated USING (
+    EXISTS (SELECT 1 FROM trainr.meals m WHERE m.id = meal_items.meal_id AND m.user_id = auth.uid())
+  );
 
+-- Workout plans: creator has full control; assigned clients can read.
 CREATE POLICY "Workout plans select" ON trainr.workout_plans
-  FOR SELECT USING (
-    auth.uid() = created_by 
-    OR id IN (SELECT plan_id FROM trainr.workout_plan_assignments WHERE client_id = auth.uid() OR trainer_id = auth.uid())
+  FOR SELECT TO authenticated USING (
+    created_by = auth.uid()
+    OR id IN (SELECT a.plan_id FROM trainr.workout_plan_assignments a WHERE a.client_id = auth.uid())
   );
 
-CREATE POLICY "Workout plans insert update delete" ON trainr.workout_plans
-  FOR ALL USING (auth.uid() = created_by);
+CREATE POLICY "Workout plans write own" ON trainr.workout_plans
+  FOR ALL TO authenticated USING (created_by = auth.uid()) WITH CHECK (created_by = auth.uid());
 
--- Workout Plan Days
-DROP POLICY IF EXISTS "Workout plan days select" ON trainr.workout_plan_days;
-DROP POLICY IF EXISTS "Workout plan days insert update delete" ON trainr.workout_plan_days;
-
+-- Workout plan days
 CREATE POLICY "Workout plan days select" ON trainr.workout_plan_days
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM trainr.workout_plans
-      WHERE workout_plans.id = workout_plan_days.plan_id
-      AND (
-        workout_plans.created_by = auth.uid() 
-        OR workout_plans.id IN (SELECT plan_id FROM trainr.workout_plan_assignments WHERE client_id = auth.uid() OR trainer_id = auth.uid())
-      )
-    )
+  FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM trainr.workout_plans wp WHERE wp.id = workout_plan_days.plan_id)
   );
 
-CREATE POLICY "Workout plan days insert update delete" ON trainr.workout_plan_days
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM trainr.workout_plans
-      WHERE workout_plans.id = workout_plan_days.plan_id
-      AND workout_plans.created_by = auth.uid()
-    )
-  );
+CREATE POLICY "Workout plan days write own" ON trainr.workout_plan_days
+  FOR ALL TO authenticated
+  USING (trainr.owns_plan(plan_id))
+  WITH CHECK (trainr.owns_plan(plan_id));
 
--- Workout Plan Exercises
-DROP POLICY IF EXISTS "Workout plan exercises select" ON trainr.workout_plan_exercises;
-DROP POLICY IF EXISTS "Workout plan exercises insert update delete" ON trainr.workout_plan_exercises;
-
+-- Workout plan exercises
 CREATE POLICY "Workout plan exercises select" ON trainr.workout_plan_exercises
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM trainr.workout_plan_days
-      JOIN trainr.workout_plans ON workout_plans.id = workout_plan_days.plan_id
-      WHERE workout_plan_days.id = workout_plan_exercises.day_id
-      AND (
-        workout_plans.created_by = auth.uid()
-        OR workout_plans.id IN (SELECT plan_id FROM trainr.workout_plan_assignments WHERE client_id = auth.uid() OR trainer_id = auth.uid())
-      )
-    )
+  FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM trainr.workout_plan_days d WHERE d.id = workout_plan_exercises.day_id)
   );
 
-CREATE POLICY "Workout plan exercises insert update delete" ON trainr.workout_plan_exercises
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM trainr.workout_plan_days
-      JOIN trainr.workout_plans ON workout_plans.id = workout_plan_days.plan_id
-      WHERE workout_plan_days.id = workout_plan_exercises.day_id
-      AND workout_plans.created_by = auth.uid()
-    )
-  );
+CREATE POLICY "Workout plan exercises write own" ON trainr.workout_plan_exercises
+  FOR ALL TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM trainr.workout_plan_days d
+    WHERE d.id = workout_plan_exercises.day_id AND trainr.owns_plan(d.plan_id)
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM trainr.workout_plan_days d
+    WHERE d.id = workout_plan_exercises.day_id AND trainr.owns_plan(d.plan_id)
+  ));
 
--- Workout Plan Assignments
+-- Plan assignments: a trainer may assign only their OWN plans to their
+-- ACTIVE clients.
 CREATE POLICY "Workout plan assignments select" ON trainr.workout_plan_assignments
-  FOR SELECT USING (auth.uid() = client_id OR auth.uid() = trainer_id);
+  FOR SELECT TO authenticated USING (auth.uid() IN (client_id, trainer_id));
 
-CREATE POLICY "Workout plan assignments insert update delete" ON trainr.workout_plan_assignments
-  FOR ALL USING (auth.uid() = trainer_id);
+CREATE POLICY "Workout plan assignments insert" ON trainr.workout_plan_assignments
+  FOR INSERT TO authenticated WITH CHECK (
+    trainer_id = auth.uid()
+    AND trainr.owns_plan(plan_id)
+    AND trainr.is_active_trainer_of(client_id)
+  );
 
--- Workout Logs
-CREATE POLICY "Workout logs owner or trainer select" ON trainr.workout_logs
-  FOR SELECT USING (auth.uid() = user_id OR user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+CREATE POLICY "Workout plan assignments delete" ON trainr.workout_plan_assignments
+  FOR DELETE TO authenticated USING (trainer_id = auth.uid());
+
+-- Workout logs
+CREATE POLICY "Workout logs select" ON trainr.workout_logs
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
 CREATE POLICY "Workout logs insert own" ON trainr.workout_logs
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
--- Workout Log Sets
-CREATE POLICY "Workout log sets select own or trainer" ON trainr.workout_log_sets
-  FOR SELECT USING (
+-- Workout log sets (follow the parent log)
+CREATE POLICY "Workout log sets select" ON trainr.workout_log_sets
+  FOR SELECT TO authenticated USING (
     EXISTS (
-      SELECT 1 FROM trainr.workout_logs
-      WHERE workout_logs.id = workout_log_sets.workout_log_id
-      AND (workout_logs.user_id = auth.uid() OR workout_logs.user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()))
+      SELECT 1 FROM trainr.workout_logs l
+      WHERE l.id = workout_log_sets.workout_log_id
+        AND (l.user_id = auth.uid() OR trainr.is_active_trainer_of(l.user_id))
     )
   );
 
 CREATE POLICY "Workout log sets insert own" ON trainr.workout_log_sets
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM trainr.workout_logs
-      WHERE workout_logs.id = workout_log_sets.workout_log_id
-      AND workout_logs.user_id = auth.uid()
-    )
+  FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM trainr.workout_logs l WHERE l.id = workout_log_sets.workout_log_id AND l.user_id = auth.uid())
   );
 
--- Body Measurements
-CREATE POLICY "Body measurements select own or trainer" ON trainr.body_measurements
-  FOR SELECT USING (auth.uid() = user_id OR user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+-- Body measurements
+CREATE POLICY "Body measurements select" ON trainr.body_measurements
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
 CREATE POLICY "Body measurements insert own" ON trainr.body_measurements
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
--- Check-in Photos
-CREATE POLICY "Checkin photos owner or trainer select" ON trainr.checkin_photos
-  FOR SELECT USING (auth.uid() = user_id OR user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+-- Check-in photos
+CREATE POLICY "Checkin photos select" ON trainr.checkin_photos
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
 CREATE POLICY "Checkin photos insert own" ON trainr.checkin_photos
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
--- Weight Logs
-CREATE POLICY "Weight logs owner or trainer select" ON trainr.weight_logs
-  FOR SELECT USING (auth.uid() = user_id OR user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+CREATE POLICY "Checkin photos delete own" ON trainr.checkin_photos
+  FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- Weight logs
+CREATE POLICY "Weight logs select" ON trainr.weight_logs
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
 CREATE POLICY "Weight logs insert own" ON trainr.weight_logs
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
--- Personal Records
-CREATE POLICY "Personal records owner or trainer select" ON trainr.personal_records
-  FOR SELECT USING (auth.uid() = user_id OR user_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+-- Personal records
+CREATE POLICY "Personal records select" ON trainr.personal_records
+  FOR SELECT TO authenticated USING (user_id = auth.uid() OR trainr.is_active_trainer_of(user_id));
 
-CREATE POLICY "Personal records insert own" ON trainr.personal_records
-  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Personal records write own" ON trainr.personal_records
+  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
--- Trainer Feed Events
+-- Trainer feed events
+--   Client: creates events only for their own ACTIVE trainer.
+--   Trainer: sees events only while the client is still linked;
+--            may acknowledge (column grant above) and delete.
 CREATE POLICY "Trainer feed events select" ON trainr.trainer_feed_events
-  FOR SELECT USING (auth.uid() = trainer_id OR auth.uid() = client_id OR client_id IN (SELECT client_id FROM trainr.trainer_clients WHERE trainer_id = auth.uid()));
+  FOR SELECT TO authenticated USING (
+    client_id = auth.uid()
+    OR (trainer_id = auth.uid() AND trainr.is_active_trainer_of(client_id))
+  );
 
-CREATE POLICY "Trainer feed events insert update" ON trainr.trainer_feed_events
-  FOR ALL USING (auth.uid() = trainer_id OR auth.uid() = client_id);
+CREATE POLICY "Trainer feed events insert" ON trainr.trainer_feed_events
+  FOR INSERT TO authenticated WITH CHECK (
+    client_id = auth.uid() AND trainer_id = trainr.my_active_trainer_id()
+  );
+
+CREATE POLICY "Trainer feed events acknowledge" ON trainr.trainer_feed_events
+  FOR UPDATE TO authenticated
+  USING (trainer_id = auth.uid())
+  WITH CHECK (trainer_id = auth.uid());
+
+CREATE POLICY "Trainer feed events delete" ON trainr.trainer_feed_events
+  FOR DELETE TO authenticated USING (auth.uid() IN (trainer_id, client_id));
+
+-- Custom exercises: own, your active trainer's, and your active clients'.
+CREATE POLICY "Custom exercises select" ON trainr.custom_exercises
+  FOR SELECT TO authenticated USING (
+    created_by = auth.uid()
+    OR created_by = trainr.my_active_trainer_id()
+    OR trainr.is_active_trainer_of(created_by)
+  );
+
+CREATE POLICY "Custom exercises insert own" ON trainr.custom_exercises
+  FOR INSERT TO authenticated WITH CHECK (created_by = auth.uid());
+
+CREATE POLICY "Custom exercises delete own" ON trainr.custom_exercises
+  FOR DELETE TO authenticated USING (created_by = auth.uid());
+
+COMMIT;

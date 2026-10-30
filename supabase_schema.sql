@@ -201,10 +201,24 @@ CREATE TABLE IF NOT EXISTS trainr.trainer_feed_events (
   target_title TEXT NOT NULL,
   is_alert BOOLEAN DEFAULT FALSE,
   is_acknowledged BOOLEAN DEFAULT FALSE,
+  acknowledged_at TIMESTAMPTZ,
+  meal_id UUID REFERENCES trainr.meals(id) ON DELETE CASCADE,
   photo_url TEXT,
   metadata JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 17. CUSTOM EXERCISES TABLE
+CREATE TABLE IF NOT EXISTS trainr.custom_exercises (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_by UUID NOT NULL REFERENCES trainr.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  target_muscle TEXT NOT NULL,
+  equipment TEXT NOT NULL DEFAULT 'Other',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(created_by, name)
+);
+
 
 -- ====================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -216,6 +230,8 @@ ALTER TABLE trainr.macro_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.meals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.meal_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trainr.workout_plan_days ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trainr.workout_plan_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_plan_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.workout_log_sets ENABLE ROW LEVEL SECURITY;
@@ -224,15 +240,23 @@ ALTER TABLE trainr.checkin_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.weight_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.personal_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trainr.trainer_feed_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trainr.custom_exercises ENABLE ROW LEVEL SECURITY;
 
 -- ====================================================================
 -- GRANT PERMISSIONS & DEFAULT PRIVILEGES
+-- Logged-out users (anon) get no table access. Signed-in users are
+-- limited by the policies in supabase_policies_recreate.sql — run that
+-- file right after this one.
 -- ====================================================================
 
-GRANT ALL ON ALL TABLES IN SCHEMA trainr TO postgres, anon, authenticated, service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA trainr TO postgres, anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA trainr GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA trainr GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA trainr TO postgres, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA trainr TO postgres, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA trainr TO authenticated;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA trainr TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA trainr GRANT ALL ON TABLES TO postgres, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA trainr GRANT ALL ON SEQUENCES TO postgres, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA trainr GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA trainr GRANT USAGE ON SEQUENCES TO authenticated;
 
 -- ====================================================================
 -- REALTIME PUBLICATION SETUP

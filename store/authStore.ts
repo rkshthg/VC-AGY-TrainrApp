@@ -48,6 +48,7 @@ interface AuthState {
   linkedTrainerId: string | null;
   themeMode: 'LIGHT' | 'DARK' | 'SYSTEM';
   unitSystem: 'METRIC' | 'IMPERIAL';
+  weightStep: number;
   isOnboarded: boolean;
   isLoading: boolean;
   isAuthLoading: boolean;
@@ -58,7 +59,9 @@ interface AuthState {
   setRole: (role: 'CLIENT' | 'TRAINER') => void;
   setThemeMode: (mode: 'LIGHT' | 'DARK' | 'SYSTEM') => Promise<void>;
   setUnitSystem: (system: 'METRIC' | 'IMPERIAL') => Promise<void>;
+  setWeightStep: (step: number) => Promise<void>;
   generateTrainerCode: () => string;
+
   linkTrainer: (code: string) => Promise<boolean>;
   unlinkTrainer: () => Promise<boolean>;
   completeOnboarding: (data: Partial<UserProfile>) => Promise<boolean>;
@@ -73,6 +76,10 @@ function mapDbToProfile(dbUser: any): UserProfile {
   const trainerData = Array.isArray(dbUser.linked_trainer)
     ? dbUser.linked_trainer[0]
     : dbUser.linked_trainer;
+
+  const macroData = Array.isArray(dbUser.macro_targets)
+    ? dbUser.macro_targets[0]
+    : dbUser.macro_targets;
 
   return {
     id: dbUser.id,
@@ -93,8 +100,15 @@ function mapDbToProfile(dbUser: any): UserProfile {
     themeMode: dbUser.theme_mode,
     unitSystem: dbUser.unit_system,
     isOnboarded: dbUser.is_onboarded,
+    macroTargets: macroData ? {
+      calories: macroData.calories,
+      protein: macroData.protein_g,
+      carbs: macroData.carbs_g,
+      fat: macroData.fat_g,
+    } : undefined,
   };
 }
+
 
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -164,6 +178,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   linkedTrainerId: null,
   themeMode: 'DARK',
   unitSystem: 'METRIC',
+  weightStep: 2.5,
   isOnboarded: false,
   isLoading: false,
   isAuthLoading: true,
@@ -214,6 +229,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       logger.warn('Failed to save unit system:', e);
     }
   },
+
+  setWeightStep: async (weightStep: number) => {
+    set({ weightStep });
+    try {
+      await AsyncStorage.setItem('@trainr_weight_step', String(weightStep));
+    } catch (e) {
+      logger.warn('Failed to save weight step:', e);
+    }
+  },
+
 
   generateTrainerCode: () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -290,40 +315,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!currentProfile) return false;
 
       const cleanedCode = code.trim().toUpperCase();
-      const { data: trainer, error: trainerError } = await supabase
-        .from('users')
-        .select('id, full_name, trainer_code')
-        .eq('trainer_code', cleanedCode)
-        .eq('role', 'TRAINER')
-        .single();
 
-      if (trainerError || !trainer) {
-        showAlert('Link Error', 'Invalid Trainer Code or Trainer not found.');
-        return false;
-      }
+      // Server-side lookup + link (trainr.link_trainer_by_code). Trainer
+      // profiles are not readable until the link exists.
+      const { data: trainer, error: linkError } = await supabase
+        .rpc('link_trainer_by_code', { p_code: cleanedCode });
 
-      const { error: linkError } = await supabase
-        .from('trainer_clients')
-        .upsert({
-          trainer_id: trainer.id,
-          client_id: currentProfile.id,
-          status: 'ACTIVE'
-        }, { onConflict: 'trainer_id,client_id' });
-
-      if (linkError) {
-        logger.warn('Failed linking in trainer_clients:', linkError);
-        showAlert('Link Error', linkError.message);
-        return false;
-      }
-
-      const { error: profileLinkError } = await supabase
-        .from('users')
-        .update({ linked_trainer_id: trainer.id })
-        .eq('id', currentProfile.id);
-
-      if (profileLinkError) {
-        logger.warn('Failed updating profile link:', profileLinkError);
-        showAlert('Link Error', profileLinkError.message);
+      if (linkError || !trainer) {
+        logger.warn('Failed linking trainer:', linkError);
+        showAlert('Link Error', linkError?.message || 'Invalid Trainer Code or Trainer not found.');
         return false;
       }
 
@@ -453,6 +453,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           showAlert('Onboarding Error (Macros)', macroError.message);
           return false;
         }
+
+        try {
+          const { useNutritionStore } = require('./nutritionStore');
+          useNutritionStore.getState().setMacroTargets(data.macroTargets);
+        } catch (e) {
+          logger.warn('Could not sync macro targets to nutritionStore:', e);
+        }
       }
 
       // 3. Insert body measurements if client and measurements provided
@@ -499,9 +506,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (updatedDb) {
         const parsed = mapDbToProfile(updatedDb);
+        if (data.macroTargets) {
+          parsed.macroTargets = data.macroTargets;
+        }
         get().setProfile(parsed);
         await secureSetProfile(parsed);
       }
+
 
       return true;
     } catch (e: any) {
