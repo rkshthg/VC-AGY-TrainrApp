@@ -9,6 +9,8 @@
  *  - APK named trainr-v<versionName>(<versionCode>)-<buildType>.apk
  *  - R8 code shrinking + resource shrinking in release builds
  *  - network security config that blocks cleartext (HTTP) traffic
+ *  - Sentry source map upload only when SENTRY_AUTH_TOKEN is set
+ *  - more Gradle memory (the Sentry + expo-updates Gradle plugins need it)
  *  - Windows build fixes: newer CMake via local.properties, Java prefers IPv4
  */
 const fs = require('fs');
@@ -72,6 +74,16 @@ android.applicationVariants.all { variant ->
         outputFileName = "trainr-v\${variant.versionName}(\${variant.versionCode})-\${variant.buildType.name}.apk"
     }
 }
+
+${MARKER} sentry upload
+// Upload source maps to Sentry only when SENTRY_AUTH_TOKEN is set; otherwise skip
+// the upload instead of failing the build.
+if (project.ext.has("shouldSentryAutoUploadGeneral")) {
+    def sentryUploadEnabled = project.ext.shouldSentryAutoUploadGeneral
+    project.ext.shouldSentryAutoUploadGeneral = { ->
+        sentryUploadEnabled() && (System.getenv("SENTRY_AUTH_TOKEN")?.trim() as boolean)
+    }
+}
 `;
 
 function replaceOnce(src, pattern, replacement, what) {
@@ -120,6 +132,8 @@ const withTrainrGradleProperties = (config) =>
     };
     set('android.enableMinifyInReleaseBuilds', 'true');
     set('android.enableShrinkResourcesInReleaseBuilds', 'true');
+    // The default 512 MB metaspace runs out once the Sentry and expo-updates Gradle plugins load.
+    set('org.gradle.jvmargs', '-Xmx4096m -XX:MaxMetaspaceSize=1024m');
     // Java on this network times out on GitHub/Maven IPv6 addresses; force IPv4 for Gradle downloads.
     set('systemProp.java.net.preferIPv4Stack', 'true');
     return cfg;

@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useNavigationContainerRef, useRouter, useSegments } from 'expo-router';
+import { initMonitoring, navigationIntegration, setMonitoringUser, wrapRoot } from '../lib/monitoring';
+import UpdateBanner from '../components/UpdateBanner';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet, ActivityIndicator, Platform, AppState } from 'react-native';
 import * as Linking from 'expo-linking';
@@ -12,6 +14,8 @@ import { localDateStr } from '../lib/dates';
 import { processQueue } from '../lib/offlineSync';
 import { startRealtime } from '../lib/realtime';
 
+// Start crash reporting before anything renders, so startup crashes are caught too.
+initMonitoring();
 WebBrowser.maybeCompleteAuthSession();
 import { useAuthStore } from '../store/authStore';
 import { useProgressStore } from '../store/progressStore';
@@ -23,10 +27,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /** Allowed URL schemes for deep link auth processing. */
 const ALLOWED_AUTH_SCHEMES = ['trainr://', 'com.trainr.trainrapp://', 'com.anonymous.trainrapp://'];
 
-export default function RootLayout() {
+function RootLayout() {
   const theme = useTheme();
   const segments = useSegments() as string[];
   const router = useRouter();
+  const navigationRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    if (navigationRef) navigationIntegration.registerNavigationContainer(navigationRef);
+  }, [navigationRef]);
 
   const session = useAuthStore((state) => state.session);
   const isAuthLoading = useAuthStore((state) => state.isAuthLoading);
@@ -133,6 +142,7 @@ export default function RootLayout() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       useAuthStore.getState().setSession(newSession);
+      if (!newSession) setMonitoringUser(null);
       if (newSession?.user) {
          await syncAllData(newSession.user.id);
       }
@@ -172,6 +182,8 @@ export default function RootLayout() {
     
     const profile = useAuthStore.getState().profile;
     if (profile) {
+      setMonitoringUser(userId, profile.role);
+
       // Send anything saved while offline before loading, so it shows up.
       await processQueue();
 
@@ -243,9 +255,13 @@ export default function RootLayout() {
         <Stack.Screen name="workout/active-session" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="clients/[clientId]" options={{ presentation: 'modal' }} />
       </Stack>
+      <UpdateBanner />
     </View>
   );
 }
+
+// Sentry.wrap adds an error boundary and touch breadcrumbs around the whole app.
+export default wrapRoot(RootLayout);
 
 const styles = StyleSheet.create({
   container: {

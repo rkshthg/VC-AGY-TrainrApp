@@ -52,7 +52,34 @@
           "microphonePermission": false
         }
       ],
-      "./plugins/withTrainrAndroid"
-    ]
+      "./plugins/withTrainrAndroid",
+      [
+        "@sentry/react-native",
+        {
+          "url": "https://de.sentry.io/",
+          "organization": "trainr-app",
+          "project": "4512360795537488"
+        }
+      ],
+      "expo-font"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "preview"
+      },
+      "url": "https://u.expo.dev/b8d9882c-df0f-4552-801e-d3e0bb790781"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b8d9882c-df0f-4552-801e-d3e0bb790781"
+      }
+    },
+    "owner": "rkshthg"
   }
 }
