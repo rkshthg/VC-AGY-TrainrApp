@@ -25,7 +25,7 @@ const ALLOWED_AUTH_SCHEMES = ['trainr://', 'com.trainr.trainrapp://', 'com.anony
 
 export default function RootLayout() {
   const theme = useTheme();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const router = useRouter();
 
   const session = useAuthStore((state) => state.session);

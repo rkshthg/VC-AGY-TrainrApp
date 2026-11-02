@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Configuration for Trainr
+  SECURITY: Blocks all cleartext (HTTP) traffic in production.
+  Only allows cleartext to localhost/emulator for development builds.
+-->
+<network-security-config>
+  <!-- Block cleartext traffic by default -->
+  <base-config cleartextTrafficPermitted="false">
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+
+  <!-- Allow cleartext only for local dev server (React Native Metro bundler) -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">localhost</domain>
+    <domain includeSubdomains="true">10.0.2.2</domain>
+    <domain includeSubdomains="true">10.0.3.2</domain>
+  </domain-config>
+</network-security-config>

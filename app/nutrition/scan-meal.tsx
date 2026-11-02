@@ -59,7 +59,7 @@ export default function ScanMealScreen() {
           return;
         }
         result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           allowsEditing: true,
           base64: true,
           quality: 0.6,
@@ -76,7 +76,7 @@ export default function ScanMealScreen() {
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           allowsEditing: true,
           base64: true,
           quality: 0.6,
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   overlayLoading: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',

@@ -7,11 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F9F6F0"
-    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -29,14 +24,35 @@
       },
       "allowBackup": false,
       "predictiveBackGestureEnabled": false,
-      "package": "com.trainr.TrainrApp",
-      "versionCode": 36
+      "package": "com.anonymous.TrainrApp",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F9F6F0"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "microphonePermission": false
+        }
+      ],
+      "./plugins/withTrainrAndroid"
     ]
   }
 }

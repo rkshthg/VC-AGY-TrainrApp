@@ -653,7 +653,7 @@ export const WeeklyProfileAnalytics: React.FC<WeeklyProfileAnalyticsProps> = ({ 
         </Svg>
 
         {/* Absolute Touch Overlay View for web-friendly click/touch targets */}
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
           {chartData.map((_, idx) => {
             const divisor = chartData.length > 1 ? chartData.length - 1 : 1;
             const stepW = graphWidth / divisor;
