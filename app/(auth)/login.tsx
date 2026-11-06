@@ -8,36 +8,32 @@ import { useTheme } from '../../lib/theme';
 export default function LoginScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const setProfile = useAuthStore((state) => state.setProfile);
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
+  const signInWithEmail = useAuthStore((state) => state.signInWithEmail);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
-  const handleLogin = () => {
-    if (!email) {
-      Alert.alert('Missing Email', 'Please enter your email address.');
+  const goToApp = () => {
+    const onboarded = useAuthStore.getState().isOnboarded;
+    router.replace(onboarded ? '/(tabs)/dashboard' : '/(auth)/onboarding');
+  };
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password) {
+      Alert.alert('Missing Details', 'Please enter your email address and password.');
       return;
     }
-    setProfile({
-      id: 'usr_' + Date.now(),
-      email: email,
-      fullName: email.split('@')[0] || 'User',
-      role: 'CLIENT',
-      isOnboarded: false,
-    });
-    router.replace('/(auth)/onboarding');
+    if (isSigningIn) return;
+    setIsSigningIn(true);
+    const success = await signInWithEmail(email, password);
+    setIsSigningIn(false);
+    if (success) goToApp();
   };
 
   const handleGoogleLogin = async () => {
     const success = await signInWithGoogle();
-    if (success) {
-      const onboarded = useAuthStore.getState().isOnboarded;
-      if (onboarded) {
-         router.replace('/(tabs)/dashboard');
-      } else {
-         router.replace('/(auth)/onboarding');
-      }
-    }
+    if (success) goToApp();
   };
 
   return (
@@ -122,6 +118,7 @@ export default function LoginScreen() {
             },
           ]}
           onPress={handleLogin}
+          disabled={isSigningIn}
           activeOpacity={0.85}
         >
           <Text
@@ -130,7 +127,7 @@ export default function LoginScreen() {
               { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
             ]}
           >
-            Sign In with Email
+            {isSigningIn ? 'Signing In...' : 'Sign In with Email'}
           </Text>
         </TouchableOpacity>
 

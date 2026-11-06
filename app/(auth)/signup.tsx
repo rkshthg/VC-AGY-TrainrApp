@@ -21,6 +21,8 @@ export default function SignupScreen() {
   const theme = useTheme();
   const setProfile = useAuthStore((state) => state.setProfile);
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
+  const signUpWithEmail = useAuthStore((state) => state.signUpWithEmail);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -49,20 +51,32 @@ export default function SignupScreen() {
     }
   };
 
-  const handleSignup = () => {
-    if (!email || !fullName) {
-      Alert.alert('Missing Fields', 'Please complete all required fields.');
+  const handleSignup = async () => {
+    if (!email.trim() || !fullName.trim() || !password) {
+      Alert.alert('Missing Fields', 'Please enter your name, email address and a password.');
       return;
     }
-    setProfile({
-      id: 'usr_' + Date.now(),
-      email,
-      fullName,
-      avatarUrl: selectedAvatar,
-      role: 'CLIENT',
-      isOnboarded: false,
-    });
-    router.replace('/(auth)/onboarding');
+    if (password.length < 6) {
+      Alert.alert('Password Too Short', 'Please use at least 6 characters.');
+      return;
+    }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    const result = await signUpWithEmail(email, password, fullName, selectedAvatar);
+    setIsSubmitting(false);
+
+    if (result === 'confirm_email') {
+      Alert.alert(
+        'Confirm Your Email',
+        `We sent a link to ${email.trim()}. Open it on this phone to confirm your account, then sign in. Check your spam folder if you don't see it.`,
+        [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
+      );
+    } else if (result === 'signed_in') {
+      // Carry a photo picked from the phone into onboarding, which uploads it.
+      const profile = useAuthStore.getState().profile;
+      if (profile && selectedAvatar) setProfile({ ...profile, avatarUrl: selectedAvatar });
+      router.replace('/(auth)/onboarding');
+    }
   };
 
   const handleGoogleSignup = async () => {
@@ -249,6 +263,7 @@ export default function SignupScreen() {
             },
           ]}
           onPress={handleSignup}
+          disabled={isSubmitting}
           activeOpacity={0.8}
         >
           <Text
@@ -257,7 +272,7 @@ export default function SignupScreen() {
               { color: theme.isDark ? '#0A1A12' : '#FFFFFF' },
             ]}
           >
-            Continue to Setup
+            {isSubmitting ? 'Creating Account...' : 'Create Account'}
           </Text>
         </TouchableOpacity>
 

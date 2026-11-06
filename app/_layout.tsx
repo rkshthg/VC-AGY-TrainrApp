@@ -205,7 +205,8 @@ function RootLayout() {
     const inAuthGroup = segments[0] === '(auth)';
     
     if (!session) {
-      if (!inAuthGroup) {
+      // Onboarding saves to the account, so it needs a signed-in user.
+      if (!inAuthGroup || segments[1] === 'onboarding') {
         router.replace('/(auth)/login');
       }
     } else {

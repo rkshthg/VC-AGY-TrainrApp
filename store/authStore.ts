@@ -67,6 +67,13 @@ interface AuthState {
   unlinkTrainer: () => Promise<boolean>;
   completeOnboarding: (data: Partial<UserProfile>) => Promise<boolean>;
   signInWithGoogle: () => Promise<boolean>;
+  signInWithEmail: (email: string, password: string) => Promise<boolean>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    fullName: string,
+    avatarUrl?: string
+  ) => Promise<'signed_in' | 'confirm_email' | 'error'>;
   logout: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<boolean>;
   updateAvatarUrl: (url?: string) => Promise<boolean>;
@@ -636,6 +643,77 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (e) {
       logger.error('Google Auth Error:', e);
       return false;
+    }
+  },
+
+  signInWithEmail: async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (error || !data.session) {
+        const message = /confirm/i.test(error?.message || '')
+          ? 'Please confirm your email first. Check your inbox (and spam) for the link from Trainr.'
+          : /invalid login/i.test(error?.message || '')
+            ? 'Wrong email or password.'
+            : error?.message || 'Could not sign in. Please try again.';
+        showAlert('Sign In Failed', message);
+        return false;
+      }
+      set({ session: data.session });
+      // Loads the profile (or creates an empty one for a first sign-in).
+      return await get().fetchProfile(data.session.user.id);
+    } catch (e) {
+      logger.error('Email sign-in error:', e);
+      showAlert('Sign In Failed', 'Could not sign in. Check your connection and try again.');
+      return false;
+    }
+  },
+
+  signUpWithEmail: async (email, password, fullName, avatarUrl) => {
+    try {
+      let emailRedirectTo: string | undefined;
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        emailRedirectTo = window.location.origin;
+      } else {
+        const { makeRedirectUri } = require('expo-auth-session');
+        emailRedirectTo = makeRedirectUri({ scheme: 'trainr' });
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          emailRedirectTo,
+          // Picked up when the profile row is first created (fetchProfile).
+          // Only web images: a photo from the phone is uploaded later, during onboarding.
+          data: {
+            full_name: fullName.trim(),
+            ...(avatarUrl?.startsWith('https://') ? { avatar_url: avatarUrl } : {}),
+          },
+        },
+      });
+      if (error) {
+        showAlert('Sign Up Failed', error.message);
+        return 'error';
+      }
+      // With email confirmation on, Supabase hides whether the address is taken:
+      // an existing account comes back with no identities.
+      if (data.user && data.user.identities?.length === 0) {
+        showAlert('Account Exists', 'An account with this email already exists. Sign in instead.');
+        return 'error';
+      }
+      if (data.session) {
+        set({ session: data.session });
+        await get().fetchProfile(data.session.user.id);
+        return 'signed_in';
+      }
+      return 'confirm_email';
+    } catch (e) {
+      logger.error('Email sign-up error:', e);
+      showAlert('Sign Up Failed', 'Could not create your account. Check your connection and try again.');
+      return 'error';
     }
   },
 

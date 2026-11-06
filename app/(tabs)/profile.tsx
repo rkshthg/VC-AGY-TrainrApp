@@ -11,6 +11,7 @@ import {
   TextInput,
   Platform,
   RefreshControl,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -485,7 +486,7 @@ export default function ProfileScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.trainerCodeChipLabel, { color: theme.accentGold }]}>YOUR TRAINER CODE</Text>
-                  <Text style={[styles.trainerCodeChipVal, { color: theme.text }]}>Code: {trainerCode || '—'}</Text>
+                  <Text selectable style={[styles.trainerCodeChipVal, { color: theme.text }]}>Code: {trainerCode || '—'}</Text>
                 </View>
                 <TouchableOpacity
                   style={[
@@ -496,11 +497,19 @@ export default function ProfileScreen() {
                     },
                   ]}
                   onPress={() => {
-                    Alert.alert('Copied!', `Trainer code "${trainerCode || '—'}" copied to clipboard.`);
+                    if (!trainerCode) {
+                      Alert.alert('No Code Yet', 'Your trainer code is still being set up. Pull down to refresh and try again.');
+                      return;
+                    }
+                    // Opens the share sheet (WhatsApp, Messages, Copy…) with the code ready to send.
+                    Share.share({
+                      message: `Join me on Trainr! Open Profile, tap Link, and enter my trainer code: ${trainerCode}`,
+                    }).catch((e) => logger.warn('Sharing trainer code failed:', e));
                   }}
+                  accessibilityLabel="Share trainer code"
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="copy-outline" size={13} color={theme.accentGold} />
+                  <Ionicons name="share-outline" size={13} color={theme.accentGold} />
                 </TouchableOpacity>
               </View>
             )}
